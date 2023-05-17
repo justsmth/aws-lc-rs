@@ -69,7 +69,6 @@ enum AlgorithmId {
     Aes128cbc,
     Aes256ctr,
     Aes256cbc,
-    Chacha20,
 }
 
 enum OperatingMode {
@@ -87,10 +86,6 @@ const AES256_KEY_LEN: usize = 32;
 const AES_IV_LEN: usize = 16;
 const AES_BLOCK_LEN: usize = 16;
 
-const CHACHA20_KEY_LEN: usize = 32;
-const CHACHA20_IV_LEN: usize = 12;
-const CHACHA20_BLOCK_LEN: usize = 64;
-
 pub const AES128_CTR: Algorithm<AES128_KEY_LEN, AES_IV_LEN, AES_BLOCK_LEN> =
     Algorithm(AlgorithmId::Aes128ctr, OperatingMode::Stream);
 pub const AES128_CBC: Algorithm<AES128_KEY_LEN, AES_IV_LEN, AES_BLOCK_LEN> =
@@ -99,8 +94,6 @@ pub const AES256_CTR: Algorithm<AES256_KEY_LEN, AES_IV_LEN, AES_BLOCK_LEN> =
     Algorithm(AlgorithmId::Aes256ctr, OperatingMode::Stream);
 pub const AES256_CBC: Algorithm<AES256_KEY_LEN, AES_IV_LEN, AES_BLOCK_LEN> =
     Algorithm(AlgorithmId::Aes256cbc, OperatingMode::Block);
-pub const CHACHA20: Algorithm<CHACHA20_KEY_LEN, CHACHA20_IV_LEN, CHACHA20_BLOCK_LEN> =
-    Algorithm(AlgorithmId::Chacha20, OperatingMode::Stream);
 
 impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
     Algorithm<KEYSIZE, IVSIZE, BLOCK_SIZE>
@@ -138,7 +131,7 @@ impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
 impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
     CipherKey<KEYSIZE, IVSIZE, BLOCK_SIZE>
 {
-    fn new(
+    pub fn new(
         algorithm: &'static Algorithm<KEYSIZE, IVSIZE, BLOCK_SIZE>,
         key_bytes: &[u8],
     ) -> Result<Self, Unspecified> {
@@ -146,7 +139,6 @@ impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
         let key = match algorithm.get_id() {
             AlgorithmId::Aes128ctr | AlgorithmId::Aes128cbc => SymmetricCipherKey::aes128(key),
             AlgorithmId::Aes256ctr | AlgorithmId::Aes256cbc => SymmetricCipherKey::aes256(key),
-            AlgorithmId::Chacha20 => SymmetricCipherKey::chacha20(key),
         }?;
         Ok(CipherKey { algorithm, key })
     }
@@ -171,7 +163,7 @@ impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
         }
     }
 
-    fn new(
+    pub fn new(
         cipher_key: CipherKey<KEYSIZE, IVSIZE, BLOCK_SIZE>,
     ) -> Result<EncryptingKey<KEYSIZE, IVSIZE, BLOCK_SIZE>, Unspecified> {
         let mut iv_bytes = [0u8; IVSIZE];
@@ -182,7 +174,7 @@ impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
         })
     }
 
-    fn encrypt<INOUT>(self, in_out: &mut INOUT) -> Result<IV<IVSIZE>, Unspecified>
+    pub fn encrypt<INOUT>(self, in_out: &mut INOUT) -> Result<IV<IVSIZE>, Unspecified>
     where
         INOUT: AsMut<[u8]> + for<'in_out> Extend<&'in_out u8>,
     {
@@ -250,7 +242,6 @@ impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
                     );
                 }
             }
-            AlgorithmId::Chacha20 => todo!(),
         }
         Ok(self.iv)
     }
@@ -264,14 +255,14 @@ pub struct DecryptingKey<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_
 impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
     DecryptingKey<KEYSIZE, IVSIZE, BLOCK_SIZE>
 {
-    fn new(
+    pub fn new(
         cipher_key: CipherKey<KEYSIZE, IVSIZE, BLOCK_SIZE>,
         iv: IV<IVSIZE>,
     ) -> DecryptingKey<KEYSIZE, IVSIZE, BLOCK_SIZE> {
         DecryptingKey { cipher_key, iv }
     }
 
-    fn decrypt(mut self, in_out: &mut [u8]) -> Result<usize, Unspecified> {
+    pub fn decrypt(mut self, in_out: &mut [u8]) -> Result<usize, Unspecified> {
         let alg = self.cipher_key.get_algorithm();
 
         let mut final_len = in_out.len();
@@ -317,7 +308,6 @@ impl<const KEYSIZE: usize, const IVSIZE: usize, const BLOCK_SIZE: usize>
                     );
                 }
             }
-            AlgorithmId::Chacha20 => todo!(),
         }
 
         if alg.is_block_mode() {
