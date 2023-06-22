@@ -257,6 +257,8 @@ pub struct Algorithm {
     #[deprecated]
     pub chaining_len: usize,
 
+    pub(crate) nid: i32,
+
     /// The internal block length.
     pub block_len: usize,
 

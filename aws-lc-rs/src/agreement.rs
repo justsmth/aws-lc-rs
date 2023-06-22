@@ -277,7 +277,7 @@ impl PrivateKey {
         if AlgorithmID::X25519 == alg.id {
             return Err(KeyRejected::invalid_encoding());
         }
-        let evp_pkey = unsafe { ec::unmarshal_der_to_private_key(key_bytes, alg.id.nid())? };
+        let evp_pkey = ec::unmarshal_der_to_private_key(key_bytes, alg.id.nid())?;
         Ok(Self::new(alg, evp_pkey))
     }
 
@@ -844,7 +844,7 @@ mod tests {
                 (),
                 |_| Ok(())
             )
-            .is_err());
+                .is_err());
         }
 
         let alg_variants: [&'static Algorithm; 4] = [&X25519, &ECDH_P256, &ECDH_P384, &ECDH_P521];
@@ -1102,7 +1102,7 @@ mod tests {
         let pubkey_re = Regex::new(
             "PublicKey \\{ algorithm: Algorithm \\{ curve: P256 \\}, bytes: \"[0-9a-f]+\" \\}",
         )
-        .unwrap();
+            .unwrap();
         let pubkey_debug = format!("{:?}", &public_key);
 
         assert!(

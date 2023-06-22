@@ -21,9 +21,9 @@ use aws_lc::EC_KEY_check_fips;
 #[cfg(not(feature = "fips"))]
 use aws_lc::EC_KEY_check_key;
 use aws_lc::{
-    point_conversion_form_t, BN_bn2bin_padded, BN_num_bytes, ECDSA_SIG_from_bytes,
+    d2i_PrivateKey, point_conversion_form_t, BN_bn2bin_padded, BN_num_bytes, ECDSA_SIG_from_bytes,
     ECDSA_SIG_get0_r, ECDSA_SIG_get0_s, ECDSA_SIG_new, ECDSA_SIG_set0, ECDSA_SIG_to_bytes,
-    EC_GROUP_get_curve_name, EC_GROUP_new_by_curve_name, EC_KEY_get0_group,
+    ECDSA_do_verify, EC_GROUP_get_curve_name, EC_GROUP_new_by_curve_name, EC_KEY_get0_group,
     EC_KEY_get0_private_key, EC_KEY_get0_public_key, EC_KEY_new, EC_KEY_set_group,
     EC_KEY_set_private_key, EC_KEY_set_public_key, EC_POINT_mul, EC_POINT_new, EC_POINT_oct2point,
     EC_POINT_point2oct, EVP_DigestVerify, EVP_DigestVerifyInit, EVP_PKEY_CTX_new_id,
@@ -34,6 +34,7 @@ use aws_lc::{
 };
 
 use crate::digest::digest_ctx::DigestContext;
+use crate::digest::Digest;
 use crate::encoding::{AsDer, PublicKeyX509Der};
 use crate::error::{KeyRejected, Unspecified};
 use crate::fips::indicator_check;
@@ -207,6 +208,56 @@ impl VerificationAlgorithm for EcdsaVerificationAlgorithm {
     }
 }
 
+impl EcdsaVerificationAlgorithm {
+    ///
+    /// # Errors
+    /// TODO
+    pub fn verify_digest_sig(
+        &self,
+        public_key: &[u8],
+        digest: &Digest,
+        signature: &[u8],
+    ) -> Result<(), Unspecified> {
+        if self.digest != digest.algorithm() {
+            return Err(Unspecified);
+        }
+        let msg_digest = digest.as_ref();
+        let ec_group = ec_group_from_nid(self.id.nid())?;
+        let ec_point = ec_point_from_bytes(&ec_group, public_key)?;
+        let ec_key = ec_key_from_public_point(&ec_group, &ec_point)?;
+
+        let ecdsa_sig = match self.sig_format {
+            EcdsaSignatureFormat::ASN1 => {
+                LcPtr::new(unsafe { ECDSA_SIG_from_bytes(signature.as_ptr(), signature.len()) })
+            }
+            EcdsaSignatureFormat::Fixed => ecdsa_sig_from_fixed(self.id, signature),
+        }?;
+
+        if 1 != unsafe {
+            ECDSA_do_verify(msg_digest.as_ptr(), msg_digest.len(), *ecdsa_sig, *ec_key)
+        } {
+            return Err(Unspecified);
+        }
+
+        Ok(())
+    }
+}
+
+#[inline]
+pub(crate) fn ec_key_from_public_point(
+    ec_group: &LcPtr<EC_GROUP>,
+    public_ec_point: &LcPtr<EC_POINT>,
+) -> Result<DetachableLcPtr<EC_KEY>, Unspecified> {
+    let ec_key = DetachableLcPtr::new(unsafe { EC_KEY_new() })?;
+    if 1 != unsafe { EC_KEY_set_group(*ec_key, **ec_group) } {
+        return Err(Unspecified);
+    }
+    if 1 != unsafe { EC_KEY_set_public_key(*ec_key, **public_ec_point) } {
+        return Err(Unspecified);
+    }
+    Ok(ec_key)
+}
+
 fn verify_fixed_signature(
     alg: &'static AlgorithmID,
     digest: &'static digest::Algorithm,
@@ -216,7 +267,7 @@ fn verify_fixed_signature(
 ) -> Result<(), Unspecified> {
     let mut out_bytes = null_mut::<u8>();
     let mut out_bytes_len = MaybeUninit::<usize>::uninit();
-    let sig = unsafe { ecdsa_sig_from_fixed(alg, signature)? };
+    let sig = ecdsa_sig_from_fixed(alg, signature)?;
     if 1 != unsafe {
         ECDSA_SIG_to_bytes(&mut out_bytes, out_bytes_len.as_mut_ptr(), *sig.as_const())
     } {
@@ -338,21 +389,23 @@ pub(crate) unsafe fn marshal_private_key_to_buffer(
     Ok(buffer)
 }
 
-pub(crate) unsafe fn unmarshal_der_to_private_key(
+pub(crate) fn unmarshal_der_to_private_key(
     key_bytes: &[u8],
     nid: i32,
 ) -> Result<LcPtr<EVP_PKEY>, KeyRejected> {
     let mut out = null_mut();
     // `d2i_PrivateKey` -> ... -> `EC_KEY_parse_private_key` -> `EC_KEY_check_key`
-    let evp_pkey = LcPtr::new(aws_lc::d2i_PrivateKey(
-        EVP_PKEY_EC,
-        &mut out,
-        &mut key_bytes.as_ptr(),
-        key_bytes
-            .len()
-            .try_into()
-            .map_err(|_| KeyRejected::too_large())?,
-    ))?;
+    let evp_pkey = LcPtr::new(unsafe {
+        d2i_PrivateKey(
+            EVP_PKEY_EC,
+            &mut out,
+            &mut key_bytes.as_ptr(),
+            key_bytes
+                .len()
+                .try_into()
+                .map_err(|_| KeyRejected::too_large())?,
+        )
+    })?;
     #[cfg(not(feature = "fips"))]
     verify_evp_key_nid(&evp_pkey.as_const(), nid)?;
     #[cfg(feature = "fips")]
@@ -489,32 +542,32 @@ pub(crate) fn evp_key_generate(nid: c_int) -> Result<LcPtr<EVP_PKEY>, Unspecifie
 }
 
 #[inline]
-pub(crate) unsafe fn evp_key_from_public_private(
+pub(crate) fn evp_key_from_public_private(
     ec_group: &LcPtr<EC_GROUP>,
     public_ec_point: Option<&LcPtr<EC_POINT>>,
     private_bignum: &DetachableLcPtr<BIGNUM>,
 ) -> Result<LcPtr<EVP_PKEY>, KeyRejected> {
-    let ec_key = DetachableLcPtr::new(EC_KEY_new())?;
-    if 1 != EC_KEY_set_group(*ec_key, **ec_group) {
+    let ec_key = DetachableLcPtr::new(unsafe { EC_KEY_new() })?;
+    if 1 != unsafe { EC_KEY_set_group(*ec_key, **ec_group) } {
         return Err(KeyRejected::unexpected_error());
     }
     if let Some(ec_point) = public_ec_point {
-        if 1 != EC_KEY_set_public_key(*ec_key, **ec_point) {
+        if 1 != unsafe { EC_KEY_set_public_key(*ec_key, **ec_point) } {
             return Err(KeyRejected::unexpected_error());
         }
     }
-    if 1 != EC_KEY_set_private_key(*ec_key, **private_bignum) {
+    if 1 != unsafe { EC_KEY_set_private_key(*ec_key, **private_bignum) } {
         return Err(KeyRejected::unexpected_error());
     }
 
-    let evp_pkey = LcPtr::new(EVP_PKEY_new())?;
+    let evp_pkey = LcPtr::new(unsafe { EVP_PKEY_new() })?;
 
-    if 1 != EVP_PKEY_assign_EC_KEY(*evp_pkey, *ec_key) {
+    if 1 != unsafe { EVP_PKEY_assign_EC_KEY(*evp_pkey, *ec_key) } {
         return Err(KeyRejected::unexpected_error());
     }
     ec_key.detach();
 
-    let nid = EC_GROUP_get_curve_name(ec_group.as_const_ptr());
+    let nid = unsafe { EC_GROUP_get_curve_name(ec_group.as_const_ptr()) };
     validate_evp_key(&evp_pkey.as_const(), nid)?;
 
     Ok(evp_pkey)
@@ -596,7 +649,7 @@ fn ecdsa_asn1_to_fixed(alg_id: &'static AlgorithmID, sig: &[u8]) -> Result<Signa
 }
 
 #[inline]
-unsafe fn ecdsa_sig_from_fixed(
+fn ecdsa_sig_from_fixed(
     alg_id: &'static AlgorithmID,
     signature: &[u8],
 ) -> Result<LcPtr<ECDSA_SIG>, ()> {
@@ -607,9 +660,9 @@ unsafe fn ecdsa_sig_from_fixed(
     let r_bn = DetachableLcPtr::<BIGNUM>::try_from(&signature[..num_size_bytes])?;
     let s_bn = DetachableLcPtr::<BIGNUM>::try_from(&signature[num_size_bytes..])?;
 
-    let ecdsa_sig = LcPtr::new(ECDSA_SIG_new())?;
+    let ecdsa_sig = LcPtr::new(unsafe { ECDSA_SIG_new() })?;
 
-    if 1 != ECDSA_SIG_set0(*ecdsa_sig, *r_bn, *s_bn) {
+    if 1 != unsafe { ECDSA_SIG_set0(*ecdsa_sig, *r_bn, *s_bn) } {
         return Err(());
     }
     r_bn.detach();

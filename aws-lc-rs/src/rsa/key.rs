@@ -25,9 +25,9 @@ use crate::{
 #[cfg(feature = "fips")]
 use aws_lc::RSA_check_fips;
 use aws_lc::{
-    EVP_DigestSignInit, EVP_PKEY_assign_RSA, EVP_PKEY_bits, EVP_PKEY_new, EVP_PKEY_size,
-    RSA_generate_key_ex, RSA_generate_key_fips, RSA_new, RSA_set0_key, RSA_size, BIGNUM, EVP_PKEY,
-    EVP_PKEY_CTX,
+    EVP_DigestSignInit, EVP_PKEY_assign_RSA, EVP_PKEY_bits, EVP_PKEY_get0_RSA, EVP_PKEY_new,
+    EVP_PKEY_size, RSA_generate_key_ex, RSA_generate_key_fips, RSA_new, RSA_set0_key, RSA_sign,
+    RSA_sign_pss_mgf1, RSA_size, BIGNUM, EVP_PKEY, EVP_PKEY_CTX,
 };
 #[cfg(feature = "ring-io")]
 use aws_lc::{RSA_get0_e, RSA_get0_n};
@@ -38,9 +38,10 @@ use core::{
 
 // TODO: Uncomment when MSRV >= 1.64
 // use core::ffi::c_int;
-use std::os::raw::c_int;
-
+use crate::digest::{match_digest_type, Digest};
 use mirai_annotations::verify_unreachable;
+use std::os::raw::{c_int, c_uint};
+use std::ptr::null;
 #[cfg(feature = "ring-io")]
 use untrusted::Input;
 use zeroize::Zeroize;
@@ -246,6 +247,76 @@ impl KeyPair {
 
         debug_assert!(computed_signature.len() >= signature.len());
 
+        Ok(())
+    }
+
+    /// Signs `digest`; the digest algorithm must match the one from `padding_alg`.
+    /// The signature it written into `signature`; `signature`'s length must be exactly the
+    /// length returned by `public_modulus_len()`.
+    ///
+    /// # Errors
+    /// `error::Unspecified` on error.
+    /// With "fips" feature enabled, errors if digest length is greater than `u32::MAX`.
+    pub fn sign_digest(
+        &self,
+        padding_alg: &'static dyn RsaEncoding,
+        digest: &Digest,
+        signature: &mut [u8],
+    ) -> Result<(), Unspecified> {
+        let encoding = padding_alg.encoding();
+        let mut output_len = self.public_modulus_len();
+        if signature.len() != output_len {
+            return Err(Unspecified);
+        }
+        let digest_alg = digest.algorithm();
+        if digest_alg != encoding.digest_algorithm() {
+            return Err(Unspecified);
+        }
+        let digest_bytes = digest.as_ref();
+        let padding = encoding.padding();
+        // These functions are non-mutating of RSA:
+        // https://github.com/awslabs/aws-lc/blob/main/include/openssl/rsa.h#L286
+
+        let rsa_key = DetachableLcPtr::new(unsafe { EVP_PKEY_get0_RSA(*self.evp_pkey) })?;
+        let result = match padding {
+            RsaPadding::RSA_PKCS1_PADDING => {
+                let mut output_len = c_uint::try_from(output_len)?;
+                let digest_len = digest_bytes.len();
+                let result = unsafe {
+                    RSA_sign(
+                        digest_alg.nid,
+                        digest_bytes.as_ptr(),
+                        digest_len,
+                        signature.as_mut_ptr(),
+                        &mut output_len,
+                        rsa_key.detach(),
+                    )
+                };
+                debug_assert_eq!(output_len as usize, signature.len());
+                result
+            }
+            RsaPadding::RSA_PKCS1_PSS_PADDING => {
+                let result = unsafe {
+                    RSA_sign_pss_mgf1(
+                        rsa_key.detach(),
+                        &mut output_len,
+                        signature.as_mut_ptr(),
+                        output_len,
+                        digest_bytes.as_ptr(),
+                        digest_bytes.len(),
+                        *match_digest_type(&digest_alg.id),
+                        null(),
+                        -1,
+                    )
+                };
+                debug_assert_eq!(output_len, signature.len());
+                result
+            }
+        };
+
+        if result != 1 {
+            return Err(Unspecified);
+        }
         Ok(())
     }
 

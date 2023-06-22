@@ -4,6 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
 use crate::digest::{Algorithm, AlgorithmID, Context};
+use aws_lc::{
+    NID_sha1, NID_sha224, NID_sha256, NID_sha384, NID_sha3_256, NID_sha3_384, NID_sha3_512,
+    NID_sha512, NID_sha512_256,
+};
 
 /// The length of a block for SHA-1, in bytes.
 const SHA1_BLOCK_LEN: usize = 512 / 8;
@@ -65,6 +69,7 @@ pub static SHA1_FOR_LEGACY_USE_ONLY: Algorithm = Algorithm {
     chaining_len: SHA1_OUTPUT_LEN,
     block_len: SHA1_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha1,
 
     one_shot_hash: sha1_digest,
 
@@ -83,6 +88,7 @@ pub static SHA224: Algorithm = Algorithm {
     chaining_len: SHA256_OUTPUT_LEN,
     block_len: SHA256_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha224,
 
     one_shot_hash: sha224_digest,
 
@@ -98,6 +104,7 @@ pub static SHA256: Algorithm = Algorithm {
     chaining_len: SHA256_OUTPUT_LEN,
     block_len: SHA256_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha256,
 
     one_shot_hash: sha256_digest,
 
@@ -116,6 +123,7 @@ pub static SHA384: Algorithm = Algorithm {
     chaining_len: SHA512_OUTPUT_LEN,
     block_len: SHA512_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha384,
 
     one_shot_hash: sha384_digest,
 
@@ -131,6 +139,7 @@ pub static SHA512: Algorithm = Algorithm {
     chaining_len: SHA512_OUTPUT_LEN,
     block_len: SHA512_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha512,
 
     one_shot_hash: sha512_digest,
 
@@ -146,6 +155,7 @@ pub static SHA512_256: Algorithm = Algorithm {
     chaining_len: SHA512_OUTPUT_LEN,
     block_len: SHA512_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha512_256,
 
     one_shot_hash: sha512_256_digest,
 
@@ -161,6 +171,7 @@ pub static SHA3_256: Algorithm = Algorithm {
     chaining_len: SHA3_256_OUTPUT_LEN,
     block_len: SHA3_256_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha3_256,
 
     one_shot_hash: sha3_256_digest,
 
@@ -176,6 +187,7 @@ pub static SHA3_384: Algorithm = Algorithm {
     chaining_len: SHA3_384_OUTPUT_LEN,
     block_len: SHA3_384_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha3_384,
 
     one_shot_hash: sha3_384_digest,
 
@@ -191,6 +203,7 @@ pub static SHA3_512: Algorithm = Algorithm {
     chaining_len: SHA3_512_OUTPUT_LEN,
     block_len: SHA3_512_BLOCK_LEN,
     max_input_len: DIGEST_MAX_INPUT_LEN,
+    nid: NID_sha3_512,
 
     one_shot_hash: sha3_512_digest,
 

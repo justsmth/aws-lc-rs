@@ -3,20 +3,26 @@
 // Modifications copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
+use aws_lc::{
+    ECDSA_SIG_get0_r, ECDSA_SIG_get0_s, ECDSA_SIG_to_bytes, ECDSA_do_sign, EVP_DigestSign,
+    EVP_DigestSignInit, EVP_PKEY_get0_EC_KEY, ECDSA_SIG, EVP_PKEY,
+};
 use core::fmt;
 use core::fmt::{Debug, Formatter};
 use core::mem::MaybeUninit;
 use core::ptr::{null, null_mut};
-
-use aws_lc::{EVP_DigestSign, EVP_DigestSignInit, EVP_PKEY_get0_EC_KEY, EVP_PKEY};
+use std::slice;
 
 use crate::digest::digest_ctx::DigestContext;
 #[cfg(feature = "fips")]
 use crate::ec::validate_evp_key;
 #[cfg(not(feature = "fips"))]
 use crate::ec::verify_evp_key_nid;
-use crate::ec::{evp_key_generate, EcdsaSignatureFormat, EcdsaSigningAlgorithm, PublicKey};
+use crate::ec::{
+    evp_key_generate, AlgorithmID, EcdsaSignatureFormat, EcdsaSigningAlgorithm, PublicKey,
+};
 
+use crate::digest::Digest;
 use crate::encoding::{AsBigEndian, AsDer, EcPrivateKeyBin, EcPrivateKeyRfc5915Der};
 use crate::error::{KeyRejected, Unspecified};
 use crate::fips::indicator_check;
@@ -153,17 +159,15 @@ impl EcdsaKeyPair {
         private_key: &[u8],
         public_key: &[u8],
     ) -> Result<Self, KeyRejected> {
-        unsafe {
-            let ec_group = ec::ec_group_from_nid(alg.0.id.nid())?;
-            let public_ec_point = ec::ec_point_from_bytes(&ec_group, public_key)
-                .map_err(|_| KeyRejected::invalid_encoding())?;
-            let private_bn = DetachableLcPtr::try_from(private_key)?;
-            let evp_pkey =
-                ec::evp_key_from_public_private(&ec_group, Some(&public_ec_point), &private_bn)?;
+        let ec_group = ec::ec_group_from_nid(alg.0.id.nid())?;
+        let public_ec_point = ec::ec_point_from_bytes(&ec_group, public_key)
+            .map_err(|_| KeyRejected::invalid_encoding())?;
+        let private_bn = DetachableLcPtr::try_from(private_key)?;
+        let evp_pkey =
+            ec::evp_key_from_public_private(&ec_group, Some(&public_ec_point), &private_bn)?;
 
-            let key_pair = Self::new(alg, evp_pkey)?;
-            Ok(key_pair)
-        }
+        let key_pair = Self::new(alg, evp_pkey)?;
+        Ok(key_pair)
     }
 
     /// Deserializes a DER-encoded private key structure to produce a `EcdsaKeyPair`.
@@ -182,7 +186,7 @@ impl EcdsaKeyPair {
         alg: &'static EcdsaSigningAlgorithm,
         private_key: &[u8],
     ) -> Result<Self, KeyRejected> {
-        let evp_pkey = unsafe { ec::unmarshal_der_to_private_key(private_key, alg.id.nid())? };
+        let evp_pkey = ec::unmarshal_der_to_private_key(private_key, alg.id.nid())?;
 
         Ok(Self::new(alg, evp_pkey)?)
     }
@@ -235,6 +239,82 @@ impl EcdsaKeyPair {
             EcdsaSignatureFormat::Fixed => ec::ecdsa_asn1_to_fixed(self.algorithm.id, out_sig)?,
         })
     }
+
+    /// Returns the signature of the digest using a random nonce.
+    ///
+    /// # Errors
+    /// `error::Unspecified` on internal error.
+    ///
+    #[inline]
+    pub fn sign_digest(&self, digest: &Digest) -> Result<Signature, Unspecified> {
+        if self.algorithm.digest != digest.algorithm() {
+            return Err(Unspecified);
+        }
+        let ec_key = ConstPointer::new(unsafe { EVP_PKEY_get0_EC_KEY(*self.evp_pkey) })?;
+        let digest_bytes = digest.as_ref();
+        let ecdsa_sig = LcPtr::new(unsafe {
+            ECDSA_do_sign(digest_bytes.as_ptr(), digest_bytes.len(), *ec_key)
+        })?;
+        match self.algorithm.sig_format {
+            EcdsaSignatureFormat::ASN1 => ecdsa_sig_to_asn1(&ecdsa_sig),
+            EcdsaSignatureFormat::Fixed => ecdsa_sig_to_fixed(self.algorithm.id, &ecdsa_sig),
+        }
+    }
+}
+
+#[inline]
+fn ecdsa_sig_to_asn1(ecdsa_sig: &LcPtr<ECDSA_SIG>) -> Result<Signature, Unspecified> {
+    let mut out_bytes: *mut u8 = null_mut();
+    let mut out_len: usize = 0;
+
+    if 1 != unsafe { ECDSA_SIG_to_bytes(&mut out_bytes, &mut out_len, **ecdsa_sig) } {
+        return Err(Unspecified);
+    }
+    let out_bytes = LcPtr::new(out_bytes)?;
+
+    Ok(Signature::new(|slice| {
+        let out_bytes = unsafe { slice::from_raw_parts(*out_bytes, out_len) };
+        slice[0..out_len].copy_from_slice(out_bytes);
+        out_len
+    }))
+}
+
+#[inline]
+const fn ecdsa_fixed_number_byte_size(alg_id: &'static AlgorithmID) -> usize {
+    match alg_id {
+        AlgorithmID::ECDSA_P256 | AlgorithmID::ECDSA_P256K1 => 32,
+        AlgorithmID::ECDSA_P384 => 48,
+        AlgorithmID::ECDSA_P521 => 66,
+    }
+}
+
+#[inline]
+fn ecdsa_sig_to_fixed(
+    alg_id: &'static AlgorithmID,
+    sig: &LcPtr<ECDSA_SIG>,
+) -> Result<Signature, Unspecified> {
+    let expected_number_size = ecdsa_fixed_number_byte_size(alg_id);
+
+    let r_bn = ConstPointer::new(unsafe { ECDSA_SIG_get0_r(**sig) })?;
+    let r_buffer = r_bn.to_be_bytes();
+
+    let s_bn = ConstPointer::new(unsafe { ECDSA_SIG_get0_s(**sig) })?;
+    let s_buffer = s_bn.to_be_bytes();
+
+    Ok(Signature::new(|slice| {
+        let (r_start, r_end) = (
+            (expected_number_size - r_buffer.len()),
+            expected_number_size,
+        );
+        let (s_start, s_end) = (
+            (2 * expected_number_size - s_buffer.len()),
+            2 * expected_number_size,
+        );
+
+        slice[r_start..r_end].copy_from_slice(r_buffer.as_slice());
+        slice[s_start..s_end].copy_from_slice(s_buffer.as_slice());
+        2 * expected_number_size
+    }))
 }
 
 #[inline]
