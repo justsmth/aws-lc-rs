@@ -8,7 +8,7 @@
 // naming conventions. Also the standard camelCase names are used for `KeyPair`
 // components.
 
-use crate::digest::match_digest_type;
+use crate::digest::{match_digest_type, Digest};
 use crate::error::{KeyRejected, Unspecified};
 #[cfg(feature = "ring-io")]
 use crate::io;
@@ -199,24 +199,42 @@ impl VerificationAlgorithm for RsaParameters {
         msg: &[u8],
         signature: &[u8],
     ) -> Result<(), Unspecified> {
+        let digest_alg = self.0;
+        let digest = digest::digest(digest_alg, msg);
+
+        self.verify_digest_sig(public_key, &digest, signature)
+    }
+}
+
+impl RsaParameters {
+    ///
+    /// # Errors
+    /// TODO
+    pub fn verify_digest_sig(
+        &self,
+        public_key: &[u8],
+        digest: &Digest,
+        signature: &[u8],
+    ) -> Result<(), Unspecified> {
+        if digest.algorithm() != self.0 {
+            return Err(Unspecified);
+        }
         unsafe {
             let rsa = build_public_RSA(public_key)?;
-            verify_RSA(self.0, self.1, &rsa, msg, signature, &self.2)
+            verify_RSA(self.1, &rsa, digest, signature, &self.2)
         }
     }
 }
 
 impl RsaKeyPair {
-    /// Sign `msg`. `msg` is digested using the digest algorithm from
+    /// Signs `msg`. `msg` is digested using the digest algorithm from
     /// `padding_alg` and the digest is then padded using the padding algorithm
     /// from `padding_alg`. The signature it written into `signature`;
     /// `signature`'s length must be exactly the length returned by
     /// `public_modulus_len()`.
     ///
-    /// Many other crypto libraries have signing functions that takes a
-    /// precomputed digest as input, instead of the message to digest. This
-    /// function does *not* take a precomputed digest; instead, `sign`
-    /// calculates the digest itself.
+    /// This function does *not* take a precomputed digest; instead, `sign`
+    /// calculates the digest itself. Use `sign_digest` to sign a pre-computed digest.
     ///
     /// # *ring* Compatibility
     /// Our implementation ignores the `SecureRandom` parameter.
@@ -232,25 +250,45 @@ impl RsaKeyPair {
         signature: &mut [u8],
     ) -> Result<(), Unspecified> {
         let encoding = padding_alg.encoding();
+        let digest_alg = encoding.0;
+        let digest = digest::digest(digest_alg, msg);
+        self.sign_digest(padding_alg, &digest, signature)
+    }
+
+    /// Signs `digest`; the digest algorithm must match the one from `padding_alg`.
+    /// The signature it written into `signature`; `signature`'s length must be exactly the
+    /// length returned by `public_modulus_len()`.
+    ///
+    /// # Errors
+    /// `error::Unspecified` on error.
+    /// With "fips" feature enabled, errors if digest length is greater than `u32::MAX`.
+    pub fn sign_digest(
+        &self,
+        padding_alg: &'static dyn RsaEncoding,
+        digest: &Digest,
+        signature: &mut [u8],
+    ) -> Result<(), Unspecified> {
+        let encoding = padding_alg.encoding();
         let mut output_len = self.public_modulus_len();
         if signature.len() != output_len {
             return Err(Unspecified);
         }
+        let digest_alg = digest.algorithm();
+        if digest_alg != encoding.0 {
+            return Err(Unspecified);
+        }
         unsafe {
-            let digest_alg = encoding.0;
-            let digest = digest::digest(digest_alg, msg);
-            let digest = digest.as_ref();
-
+            let digest_bytes = digest.as_ref();
             let padding = encoding.1;
             // These functions are non-mutating of RSA:
             // https://github.com/awslabs/aws-lc/blob/main/include/openssl/rsa.h#L286
             let result = match padding {
                 RsaPadding::RSA_PKCS1_PADDING => {
                     let mut output_len = c_uint::try_from(output_len)?;
-                    let digest_len = digest.len();
+                    let digest_len = digest_bytes.len();
                     let result = RSA_sign(
                         digest_alg.hash_nid,
-                        digest.as_ptr(),
+                        digest_bytes.as_ptr(),
                         digest_len,
                         signature.as_mut_ptr(),
                         &mut output_len,
@@ -265,8 +303,8 @@ impl RsaKeyPair {
                         &mut output_len,
                         signature.as_mut_ptr(),
                         output_len,
-                        digest.as_ptr(),
-                        digest.len(),
+                        digest_bytes.as_ptr(),
+                        digest_bytes.len(),
                         *match_digest_type(&digest_alg.id),
                         null(),
                         -1,
@@ -527,10 +565,9 @@ unsafe fn build_private_RSA(public_key: &[u8]) -> Result<LcPtr<*mut RSA>, KeyRej
 #[inline]
 #[allow(non_snake_case)]
 fn verify_RSA(
-    algorithm: &'static digest::Algorithm,
     padding: &'static RsaPadding,
     public_key: &LcPtr<*mut RSA>,
-    msg: &[u8],
+    digest: &Digest,
     signature: &[u8],
     allowed_bit_size: &RangeInclusive<u32>,
 ) -> Result<(), Unspecified> {
@@ -541,7 +578,7 @@ fn verify_RSA(
             return Err(Unspecified);
         }
 
-        let digest = digest::digest(algorithm, msg);
+        let algorithm = digest.algorithm();
         let digest = digest.as_ref();
 
         let result = match padding {
@@ -635,9 +672,27 @@ where
         message: &[u8],
         signature: &[u8],
     ) -> Result<(), Unspecified> {
+        let digest = digest::digest(params.0, message);
+
+        self.verify_digest_sig(params, &digest, signature)
+    }
+
+    ///
+    /// # Errors
+    /// TODO
+    pub fn verify_digest_sig(
+        &self,
+        params: &RsaParameters,
+        digest: &Digest,
+        signature: &[u8],
+    ) -> Result<(), Unspecified> {
+        if digest.algorithm() != params.0 {
+            return Err(Unspecified);
+        }
+
         unsafe {
             let rsa = self.build_RSA()?;
-            verify_RSA(params.0, params.1, &rsa, message, signature, &params.2)
+            verify_RSA(params.1, &rsa, digest, signature, &params.2)
         }
     }
 }

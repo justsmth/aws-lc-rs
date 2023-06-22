@@ -19,6 +19,7 @@ use aws_lc::{
 };
 use std::fmt;
 
+use crate::digest::Digest;
 use std::fmt::{Debug, Formatter};
 
 /// An ECDSA key pair, used for signing.
@@ -173,10 +174,27 @@ impl EcdsaKeyPair {
     ///
     #[inline]
     pub fn sign(&self, _rng: &dyn SecureRandom, message: &[u8]) -> Result<Signature, Unspecified> {
+        let digest = digest::digest(self.algorithm.digest, message);
+        EcdsaKeyPair::sign_digest(self, &digest)
+    }
+
+    /// Returns the signature of the digest using a random nonce.
+    ///
+    /// # Errors
+    /// `error::Unspecified` on internal error.
+    ///
+    #[inline]
+    pub fn sign_digest(&self, digest: &Digest) -> Result<Signature, Unspecified> {
         unsafe {
-            let digest = digest::digest(self.algorithm.digest, message);
-            let digest = digest.as_ref();
-            let ecdsa_sig = LcPtr::new(ECDSA_do_sign(digest.as_ptr(), digest.len(), *self.ec_key))?;
+            if self.algorithm.digest != digest.algorithm() {
+                return Err(Unspecified);
+            }
+            let digest_bytes = digest.as_ref();
+            let ecdsa_sig = LcPtr::new(ECDSA_do_sign(
+                digest_bytes.as_ptr(),
+                digest_bytes.len(),
+                *self.ec_key,
+            ))?;
             match self.algorithm.sig_format {
                 EcdsaSignatureFormat::ASN1 => ec::ecdsa_sig_to_asn1(&ecdsa_sig),
                 EcdsaSignatureFormat::Fixed => {

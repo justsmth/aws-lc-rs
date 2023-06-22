@@ -35,6 +35,7 @@ use std::ptr::null;
 use std::ptr::null_mut;
 use std::slice;
 
+use crate::digest::Digest;
 #[cfg(feature = "ring-sig-verify")]
 use untrusted::Input;
 
@@ -155,6 +156,25 @@ impl VerificationAlgorithm for EcdsaVerificationAlgorithm {
         msg: &[u8],
         signature: &[u8],
     ) -> Result<(), Unspecified> {
+        let msg_digest = digest::digest(self.digest, msg);
+        self.verify_digest_sig(public_key, &msg_digest, signature)
+    }
+}
+
+impl EcdsaVerificationAlgorithm {
+    ///
+    /// # Errors
+    /// TODO
+    pub fn verify_digest_sig(
+        &self,
+        public_key: &[u8],
+        digest: &Digest,
+        signature: &[u8],
+    ) -> Result<(), Unspecified> {
+        if self.digest != digest.algorithm() {
+            return Err(Unspecified);
+        }
+        let msg_digest = digest.as_ref();
         unsafe {
             let ec_group = ec_group_from_nid(self.id.nid())?;
             let ec_point = ec_point_from_bytes(&ec_group, public_key)?;
@@ -164,8 +184,6 @@ impl VerificationAlgorithm for EcdsaVerificationAlgorithm {
                 EcdsaSignatureFormat::ASN1 => ecdsa_sig_from_asn1(signature),
                 EcdsaSignatureFormat::Fixed => ecdsa_sig_from_fixed(self.id, signature),
             }?;
-            let msg_digest = digest::digest(self.digest, msg);
-            let msg_digest = msg_digest.as_ref();
 
             if 1 != ECDSA_do_verify(msg_digest.as_ptr(), msg_digest.len(), *ecdsa_sig, *ec_key) {
                 return Err(Unspecified);
