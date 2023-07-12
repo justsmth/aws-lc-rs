@@ -4,21 +4,20 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
 use crate::digest::digest_ctx::DigestContext;
+use crate::ec;
 use crate::ec::{validate_ec_key, EcdsaSignatureFormat, EcdsaSigningAlgorithm, PublicKey};
 use crate::error::{KeyRejected, Unspecified};
 use crate::pkcs8::{Document, Version};
 use crate::ptr::{DetachableLcPtr, LcPtr};
 use crate::rand::SecureRandom;
 use crate::signature::{KeyPair, Signature};
-use crate::{digest, ec};
 #[cfg(not(feature = "fips"))]
 use aws_lc::EC_KEY_generate_key;
 #[cfg(feature = "fips")]
 use aws_lc::EC_KEY_generate_key_fips;
 use aws_lc::{
     EC_KEY_new_by_curve_name, EVP_DigestSign, EVP_MD_CTX_set_pkey_ctx, EVP_PKEY_CTX_new,
-    EVP_PKEY_assign_EC_KEY, EVP_PKEY_new, EVP_PKEY_set1_EC_KEY, EVP_PKEY_sign_init, EC_KEY,
-    EVP_PKEY,
+    EVP_PKEY_assign_EC_KEY, EVP_PKEY_new, EVP_PKEY_sign_init, EC_KEY, EVP_PKEY,
 };
 use std::fmt;
 use std::mem::MaybeUninit;
@@ -78,19 +77,15 @@ pub(crate) unsafe fn generate_key(nid: i32) -> Result<LcPtr<*mut EVP_PKEY>, Unsp
 impl EcdsaKeyPair {
     unsafe fn new(
         algorithm: &'static EcdsaSigningAlgorithm,
-        ec_key: LcPtr<*mut EC_KEY>,
+        ec_key: DetachableLcPtr<*mut EC_KEY>,
     ) -> Result<Self, ()> {
         let pubkey = ec::marshal_public_key(&ec_key.as_const())?;
 
         let evp_pkey = LcPtr::new(unsafe { EVP_PKEY_new() }).map_err(|_| Unspecified)?;
-        if 1 != unsafe { EVP_PKEY_set1_EC_KEY(*evp_pkey, *ec_key) } {
+        if 1 != unsafe { EVP_PKEY_assign_EC_KEY(*evp_pkey, *ec_key) } {
             return Err(());
         }
-
-        // Remove this reference since we took ownership by value, EVP_PKEY already incremented a reference to it
-        // so this is safe, and would happen regardless.
-        // Doing this in lieu of passing by reference or allowing the lint bypass.
-        drop(ec_key);
+        ec_key.detach();
 
         Ok(Self {
             algorithm,
@@ -195,7 +190,7 @@ impl EcdsaKeyPair {
             return Err(Unspecified);
         };
 
-        let mut context = digest::digest_ctx::DigestContext::new(self.algorithm.digest)?;
+        let mut context = DigestContext::new(self.algorithm.digest)?;
         unsafe { EVP_MD_CTX_set_pkey_ctx(context.as_mut_ptr(), *pkey_ctx) };
 
         let mut out_sig = vec![0u8; get_signature_length(&mut context)?];

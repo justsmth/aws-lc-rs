@@ -4,7 +4,7 @@
 use crate::ec::PKCS8_DOCUMENT_MAX_LEN;
 use crate::error::{KeyRejected, Unspecified};
 use crate::pkcs8::{Document, Version};
-use crate::ptr::LcPtr;
+use crate::ptr::{DetachableLcPtr, LcPtr};
 use crate::{cbb, cbs};
 use aws_lc::{
     CBB_finish, EVP_PKEY_bits, EVP_PKEY_get1_EC_KEY, EVP_PKEY_get1_RSA, EVP_PKEY_id,
@@ -69,9 +69,10 @@ impl LcPtr<*mut EVP_PKEY> {
         unsafe { EVP_PKEY_bits(**self) }
     }
 
-    pub(crate) fn get_ec_key(&self) -> Result<LcPtr<*mut EC_KEY>, KeyRejected> {
+    pub(crate) fn get_ec_key(&self) -> Result<DetachableLcPtr<*mut EC_KEY>, KeyRejected> {
         unsafe {
-            LcPtr::new(EVP_PKEY_get1_EC_KEY(**self)).map_err(|_| KeyRejected::wrong_algorithm())
+            DetachableLcPtr::new(EVP_PKEY_get1_EC_KEY(**self))
+                .map_err(|_| KeyRejected::wrong_algorithm())
         }
     }
 

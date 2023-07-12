@@ -337,8 +337,8 @@ unsafe fn ec_key_from_public_private(
     ec_group: &LcPtr<*mut EC_GROUP>,
     public_ec_point: &LcPtr<*mut EC_POINT>,
     private_bignum: &DetachableLcPtr<*mut BIGNUM>,
-) -> Result<LcPtr<*mut EC_KEY>, ()> {
-    let ec_key = LcPtr::new(EC_KEY_new())?;
+) -> Result<DetachableLcPtr<*mut EC_KEY>, ()> {
+    let ec_key = DetachableLcPtr::new(EC_KEY_new())?;
     if 1 != EC_KEY_set_group(*ec_key, **ec_group) {
         return Err(());
     }
