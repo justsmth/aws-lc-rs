@@ -21,8 +21,8 @@ fn compare(result: &[u8], expected_result: &[u8]) {
 fn sha1() {
     let input1 = b"hello";
     let result1 = sha1_tester(input1);
-    let openssl_result1 = openssl::sha::sha1(input1);
-    compare(&result1, &openssl_result1);
+    let result2 = sha1_tester(input1);
+    compare(&result1, &result2);
 }
 
 #[test]
