@@ -20,25 +20,49 @@ reported the issue. Please try to include as much information as you can. Detail
 * Anything unusual about your environment or deployment
 
 
-## Contributing via Pull Requests
-Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
+## Contributing via Pull Requests (PRs)
+Contributions via pull requests are much appreciated. Here are some guidelines to help ensure that your PR is smoothly
+processed:
 
-1. You are working against the latest source on the *main* branch.
-2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
-3. You open an issue to discuss any significant work - we would hate for your time to be wasted.
+1. **Focused/Reviewable**:
+   Each PR should address a single issue or add a single feature. PRs are easiest to review when they are small,
+   incremental changes. Focus helps our review process and the clarity of the project's history.
+    * For clarity, avoid reformatting code outside the section of code you are changing.
+    * Before significant work, please open an issue to discuss your plans. We may need to provide specific guidance
+      regarding the direction of our project.
 
-To send us a pull request, please:
+2. **Well-Tested**:
+   Ensure that your code is thoroughly tested to prevent bugs and regressions. Include unit, integration, and/or
+   end-to-end tests whenever possible. New and/or existing tests should demonstrate the correctness of your changes.
+   Execute as many of the tests as you are able, prior to PR submission.
 
-1. Fork the repository.
-2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Ensure local tests pass.
-4. Commit to your fork using clear commit messages.
-5. Send us a pull request, answering any default questions in the pull request interface.
-6. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+3. **Code Quality**:
+   Submit clean, readable, and efficient code. Follow the existing project structure, naming conventions, and other
+   established patterns within the codebase.
 
-GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
+4. **Descriptive Titles and Messages**:
+   Use descriptive and concise titles. Include a detailed message describing what the PR does, the problem it solves,
+   and any related issues or discussions.
+
+5. **Documentation**:
+   Update the documentation and/or comments to reflect your changes, especially if you are introducing new or changing
+   existing behavior.
+
+6. **Up-to-Date**:
+   Ensure your PR is up-to-date with the main branch to prevent merge conflicts. Rebase and resolve conflicts if
+   necessary when submitting.
+
+7. **Cross-Platform Compatibility**:
+   **aws-lc-rs** supports a variety of operating systems and environments. Avoid changes that might break our cross-platform
+   compatibility.
+
+The above guidelines help clarify our expectations for PRs we accept for merging, but it's OK to make a mistake!
+We know that most PRs submitted will not be perfect. Our team will review each PR and provide specific feedback
+regarding concerns we identify. We appreciate any effort from our community that helps us improve **aws-lc-rs**!
+
+### GitHub Documentation
+GitHub provides documentation on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
-
 
 ## Finding contributions to work on
 Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
@@ -57,3 +81,5 @@ If you discover a potential security issue in this project we ask that you notif
 ## Licensing
 
 See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+
+We may ask you to sign a [Contributor License Agreement (CLA)](http://en.wikipedia.org/wiki/Contributor_License_Agreement) for larger changes.
