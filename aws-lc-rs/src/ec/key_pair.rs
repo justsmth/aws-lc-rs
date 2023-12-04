@@ -168,7 +168,7 @@ impl EcdsaKeyPair {
     /// attempt to automatically detect other key formats. This function supports unencrypted
     /// PKCS#8 `PrivateKeyInfo` structures as well as key type specific formats.
     ///
-    /// See `EcdsaPrivateKey::to_der`.
+    /// See `EcdsaPrivateKey::as_der`.
     ///
     /// # Errors
     /// `error::KeyRejected` if parsing failed or key otherwise unacceptable.
@@ -331,12 +331,14 @@ impl PrivateKey<'_> {
             Ok(EcPrivateKeyBin::new(buffer))
         }
     }
+}
 
+impl crate::fmt::AsDer<EcPrivateKeyRfc5915Der<'static>> for PrivateKey<'_> {
     /// Serializes the key as a DER-encoded `ECPrivateKey` (RFC 5915) structure.
     ///
     /// # Errors
     /// `error::Unspecified`  if serialization failed.
-    pub fn to_der(&self) -> Result<EcPrivateKeyRfc5915Der<'static>, Unspecified> {
+    fn as_der(&self) -> Result<EcPrivateKeyRfc5915Der<'static>, Unspecified> {
         unsafe {
             let mut outp = std::ptr::null_mut::<u8>();
             let ec_key = ConstPointer::new(EVP_PKEY_get0_EC_KEY(*self.0.evp_pkey))?;

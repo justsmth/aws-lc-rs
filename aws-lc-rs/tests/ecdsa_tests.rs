@@ -3,7 +3,9 @@
 // Modifications copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
+use aws_lc_rs::signature::EcPrivateKeyRfc5915Der;
 use aws_lc_rs::{
+    fmt::AsDer,
     rand::SystemRandom,
     signature::{self, EcdsaKeyPair, KeyPair, Signature, UnparsedPublicKey},
     test, test_file,
@@ -473,7 +475,7 @@ fn test_private_key() {
             assert_eq!(key_pair_doc.as_ref(), key_pair_copy_doc.as_ref());
         }
         {
-            let private_key_der = key_pair.private_key().to_der().unwrap();
+            let private_key_der: EcPrivateKeyRfc5915Der = key_pair.private_key().as_der().unwrap();
             assert_eq!("Buffer(...)", format!("{private_key_der:?}"));
             assert!(EcdsaKeyPair::from_pkcs8(signing_alg, private_key_der.as_ref()).is_err());
 

@@ -201,7 +201,17 @@ mod sealed {
     // ```
     pub trait Sealed {}
 }
-
+/// Serialization formats
+pub mod fmt {
+    /// Trait for structs that can be serialized into a DER format
+    pub trait AsDer<T> {
+        /// Serialize into a DER formatted string
+        ///
+        /// # Errors
+        /// Returns Unspecified if serialization fails.
+        fn as_der(&self) -> Result<T, crate::error::Unspecified>;
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::{dump_error, init};
