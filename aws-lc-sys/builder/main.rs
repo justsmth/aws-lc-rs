@@ -149,11 +149,17 @@ fn prepare_cmake_build(manifest_dir: &PathBuf, build_prefix: String) -> cmake::C
     }
 
     let opt_level = env::var("OPT_LEVEL").unwrap_or_else(|_| "0".to_string());
+    let profile = env::var("PROFILE").unwrap_or_else(|_| "release".to_string());
     if opt_level.ne("0") {
         if opt_level.eq("1") || opt_level.eq("2") {
             cmake_cfg.define("CMAKE_BUILD_TYPE", "relwithdebinfo");
         } else {
             cmake_cfg.define("CMAKE_BUILD_TYPE", "release");
+        }
+    } else if profile.ne("release") {
+        // The Windows/FIPS build rejects "debug" profile
+        if target_os() != "windows" || !cfg!(feature = "fips") {
+            cmake_cfg.define("CMAKE_BUILD_TYPE", "debug");
         }
     }
 
