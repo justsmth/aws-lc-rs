@@ -5,7 +5,7 @@
 function usage() {
   cat <<EOF 1>&2
 Usage:
-  $0 [-l] [-m] [-w] [-x] [-a] -y <output_yaml>
+  $0 [-l] [-m] [-w] [-x] [-a] [-f] [-o <output_file>] [-t <type>]
 
 OS OPTIONS:
     -l    Locate source for Linux.
@@ -18,7 +18,8 @@ CPU OPTIONS
 
 OUTPUT OPTIONS
     -f              Overwrite existing file if it exists.
-    -y OUTPUT_YAML  Name of yaml file to output to.
+    -o OUTPUT_FILE  Name of yaml file to output to.
+    -t TYPE         Format of output. Must be "YAML" or "TOML".
 
 EOF
   exit 1;
@@ -27,8 +28,9 @@ EOF
 OS_SRC=""
 CPU_SRC=""
 OUTPUT=""
+FORMAT="toml"
 FORCE=0
-while getopts "lmwxafy:" arg; do
+while getopts "lmwxafo:t:" arg; do
   case "$arg" in
     l)
       OS_SRC="linux"
@@ -48,11 +50,15 @@ while getopts "lmwxafy:" arg; do
     f)
       FORCE=1
       ;;
-    y)
-      if [[ "${OPTARG}" == *.yaml || "${OPTARG}" == *.yml ]]; then
-        OUTPUT="${OPTARG}"
-      else
-        OUTPUT="${OPTARG}".yml
+    o)
+      OUTPUT="${OPTARG}"
+      ;;
+    t)
+      FORMAT="${OPTARG,,}"
+      if [[ "${FORMAT}" != "yaml" &&  "${FORMAT}" != 'toml' ]]; then
+        echo "Available types are YAML and TOML"
+        echo
+        usage
       fi
       ;;
     *)
@@ -61,10 +67,17 @@ while getopts "lmwxafy:" arg; do
   esac
 done
 
+ALT_EXT="${FORMAT:0:1}${FORMAT:2:2}"
+if [[ "${OUTPUT}" != *.${FORMAT} && "${OUTPUT}" != *.${ALT_EXT} ]]; then
+  OUTPUT="${OUTPUT}.${FORMAT}"
+fi
+
+
 echo "Using configuration:"
 echo "  * CPU_SRC=${CPU_SRC}"
 echo "  * OS_SRC=${OS_SRC}"
 echo "  * OUTPUT=${OUTPUT}"
+echo "  * FORMAT=${FORMAT}"
 echo
 
 if [[ -z "${CPU_SRC}" || -z "${OS_SRC}" || -z "${OUTPUT}" ]]; then
@@ -89,20 +102,43 @@ if ! touch "$OUTPUT"; then
   usage
 fi
 
+
 function report_object_file() {
-  echo "${1}:" | tee -a "$OUTPUT"
+  if [[ ${FORMAT} == "toml" ]]; then
+    echo "[${1}]" | tee -a "${OUTPUT}"
+  else
+    echo "${1}:" | tee -a "${OUTPUT}"
+  fi
 }
 
 function report_options() {
-  echo "  options: '${1}'" >>"$OUTPUT"
+  if [[ ${FORMAT} == "toml" ]]; then
+    echo "  options = \"${1}\"" | tee -a "${OUTPUT}"
+  else
+    echo "  options: '${1}'" | tee -a "${OUTPUT}"
+  fi
 }
 
 function report_sources_header() {
-  echo "  sources:" >>"$OUTPUT"
+  if [[ ${FORMAT} == "toml" ]]; then
+    echo "  source = [" | tee -a "${OUTPUT}"
+  else
+    echo "  sources:" | tee -a "${OUTPUT}"
+  fi
+}
+
+function report_sources_footer() {
+  if [[ ${FORMAT} == "toml" ]]; then
+    echo "  ]" | tee -a "${OUTPUT}"
+  fi
 }
 
 function report_source_file() {
-  echo "    - ${1}" >>"$OUTPUT"
+  if [[ ${FORMAT} == "toml" ]]; then
+    echo "    \"${1}\"," | tee -a "${OUTPUT}"
+  else
+    echo "    - ${1}" | tee -a "${OUTPUT}"
+  fi
 }
 
 #SCRIPT_DIR="$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)"
@@ -126,13 +162,16 @@ for OBJ_FILE_NAME in "${OBJECT_FILES[@]}"; do
       report_source_file "${REL_SRC_PATH}"
     fi
   done
-  if [[ ${SRC_FOUND} -eq 0 ]]; then
+  if [[ ${SRC_FOUND} -ne 0 ]]; then
+    report_sources_footer
+  else
     OBJ_FILE_SRC_NAME="${OBJ_FILE_NAME//\.o/}"
     mapfile -t OBJ_FILE_SRC_FILES < <(find "${AWS_LC_ROOT}"/crypto -type f -name "${OBJ_FILE_SRC_NAME}")
     if [[ ${#OBJ_FILE_SRC_FILES[@]} -eq 1 ]]; then
       SRC_FOUND=1
       REL_SRC_PATH="${OBJ_FILE_SRC_FILES[0]//${AWS_LC_ROOT}\//}"
       report_source_file "${REL_SRC_PATH}"
+      report_sources_footer
     fi
   fi
   if [[ ${SRC_FOUND} -eq 0 ]]; then
@@ -142,6 +181,7 @@ for OBJ_FILE_NAME in "${OBJECT_FILES[@]}"; do
       SRC_FOUND=1
       REL_SRC_PATH="${OBJ_FILE_SRC_FILES[0]//${AWS_LC_ROOT}\//}"
       report_source_file "${REL_SRC_PATH}"
+      report_sources_footer
     fi
   fi
   if [[ ${SRC_FOUND} -eq 0 ]]; then
@@ -151,6 +191,7 @@ for OBJ_FILE_NAME in "${OBJECT_FILES[@]}"; do
       SRC_FOUND=1
       REL_SRC_PATH="${OBJ_FILE_SRC_FILES[0]//${AWS_LC_ROOT}\//}"
       report_source_file "${REL_SRC_PATH}"
+      report_sources_footer
     fi
   fi
   if [[ ${SRC_FOUND} -eq 0 ]]; then
@@ -160,6 +201,7 @@ for OBJ_FILE_NAME in "${OBJECT_FILES[@]}"; do
       SRC_FOUND=1
       REL_SRC_PATH="${OBJ_FILE_SRC_FILES[0]//${AWS_LC_ROOT}\//}"
       report_source_file "${REL_SRC_PATH}"
+      report_sources_footer
     fi
   fi
   if [[ ${SRC_FOUND} -eq 0 ]]; then
@@ -169,4 +211,3 @@ for OBJ_FILE_NAME in "${OBJECT_FILES[@]}"; do
   fi
 
 done
-
