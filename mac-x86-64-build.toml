@@ -1,0 +1,876 @@
+[[Object]]
+  name = "a_bitstr.c.o"
+  source = "crypto/asn1/a_bitstr.c"
+[[Object]]
+  name = "a_bool.c.o"
+  source = "crypto/asn1/a_bool.c"
+[[Object]]
+  name = "a_d2i_fp.c.o"
+  source = "crypto/asn1/a_d2i_fp.c"
+[[Object]]
+  name = "a_dup.c.o"
+  source = "crypto/asn1/a_dup.c"
+[[Object]]
+  name = "a_gentm.c.o"
+  source = "crypto/asn1/a_gentm.c"
+[[Object]]
+  name = "a_i2d_fp.c.o"
+  source = "crypto/asn1/a_i2d_fp.c"
+[[Object]]
+  name = "a_int.c.o"
+  source = "crypto/asn1/a_int.c"
+[[Object]]
+  name = "a_mbstr.c.o"
+  source = "crypto/asn1/a_mbstr.c"
+[[Object]]
+  name = "a_object.c.o"
+  source = "crypto/asn1/a_object.c"
+[[Object]]
+  name = "a_octet.c.o"
+  source = "crypto/asn1/a_octet.c"
+[[Object]]
+  name = "a_strex.c.o"
+  source = "crypto/asn1/a_strex.c"
+[[Object]]
+  name = "a_strnid.c.o"
+  source = "crypto/asn1/a_strnid.c"
+[[Object]]
+  name = "a_time.c.o"
+  source = "crypto/asn1/a_time.c"
+[[Object]]
+  name = "a_type.c.o"
+  source = "crypto/asn1/a_type.c"
+[[Object]]
+  name = "a_utctm.c.o"
+  source = "crypto/asn1/a_utctm.c"
+[[Object]]
+  name = "a_utf8.c.o"
+  source = "crypto/asn1/a_utf8.c"
+[[Object]]
+  name = "asn1_lib.c.o"
+  source = "crypto/asn1/asn1_lib.c"
+[[Object]]
+  name = "asn1_par.c.o"
+  source = "crypto/asn1/asn1_par.c"
+[[Object]]
+  name = "asn_pack.c.o"
+  source = "crypto/asn1/asn_pack.c"
+[[Object]]
+  name = "f_int.c.o"
+  source = "crypto/asn1/f_int.c"
+[[Object]]
+  name = "f_string.c.o"
+  source = "crypto/asn1/f_string.c"
+[[Object]]
+  name = "tasn_dec.c.o"
+  source = "crypto/asn1/tasn_dec.c"
+[[Object]]
+  name = "tasn_enc.c.o"
+  source = "crypto/asn1/tasn_enc.c"
+[[Object]]
+  name = "tasn_fre.c.o"
+  source = "crypto/asn1/tasn_fre.c"
+[[Object]]
+  name = "tasn_new.c.o"
+  source = "crypto/asn1/tasn_new.c"
+[[Object]]
+  name = "tasn_typ.c.o"
+  source = "crypto/asn1/tasn_typ.c"
+[[Object]]
+  name = "tasn_utl.c.o"
+  source = "crypto/asn1/tasn_utl.c"
+[[Object]]
+  name = "posix_time.c.o"
+  source = "crypto/asn1/posix_time.c"
+[[Object]]
+  name = "base64.c.o"
+  source = "crypto/base64/base64.c"
+[[Object]]
+  name = "bio.c.o"
+  source = "crypto/bio/bio.c"
+[[Object]]
+  name = "bio_mem.c.o"
+  source = "crypto/bio/bio_mem.c"
+[[Object]]
+  name = "connect.c.o"
+  source = "crypto/bio/connect.c"
+[[Object]]
+  name = "fd.c.o"
+  source = "crypto/bio/fd.c"
+[[Object]]
+  name = "file.c.o"
+  source = "crypto/bio/file.c"
+[[Object]]
+  name = "hexdump.c.o"
+  source = "crypto/bio/hexdump.c"
+[[Object]]
+  name = "pair.c.o"
+  source = "crypto/bio/pair.c"
+[[Object]]
+  name = "printf.c.o"
+  source = "crypto/bio/printf.c"
+[[Object]]
+  name = "socket.c.o"
+  source = "crypto/bio/socket.c"
+[[Object]]
+  name = "socket_helper.c.o"
+  source = "crypto/bio/socket_helper.c"
+[[Object]]
+  name = "blake2.c.o"
+  source = "crypto/blake2/blake2.c"
+[[Object]]
+  name = "bn_asn1.c.o"
+  source = "crypto/bn_extra/bn_asn1.c"
+[[Object]]
+  name = "convert.c.o"
+  source = "crypto/bn_extra/convert.c"
+[[Object]]
+  name = "buf.c.o"
+  source = "crypto/buf/buf.c"
+[[Object]]
+  name = "asn1_compat.c.o"
+  source = "crypto/bytestring/asn1_compat.c"
+[[Object]]
+  name = "ber.c.o"
+  source = "crypto/bytestring/ber.c"
+[[Object]]
+  name = "cbb.c.o"
+  source = "crypto/bytestring/cbb.c"
+[[Object]]
+  name = "cbs.c.o"
+  source = "crypto/bytestring/cbs.c"
+[[Object]]
+  name = "unicode.c.o"
+  source = "crypto/bytestring/unicode.c"
+[[Object]]
+  name = "chacha.c.o"
+  source = "crypto/chacha/chacha.c"
+[[Object]]
+  name = "cipher_extra.c.o"
+  source = "crypto/cipher_extra/cipher_extra.c"
+[[Object]]
+  name = "derive_key.c.o"
+  source = "crypto/cipher_extra/derive_key.c"
+[[Object]]
+  name = "e_aesctrhmac.c.o"
+  source = "crypto/cipher_extra/e_aesctrhmac.c"
+[[Object]]
+  name = "e_aesgcmsiv.c.o"
+  source = "crypto/cipher_extra/e_aesgcmsiv.c"
+[[Object]]
+  name = "e_chacha20poly1305.c.o"
+  source = "crypto/cipher_extra/e_chacha20poly1305.c"
+[[Object]]
+  name = "e_aes_cbc_hmac_sha1.c.o"
+  source = "crypto/cipher_extra/e_aes_cbc_hmac_sha1.c"
+[[Object]]
+  name = "e_aes_cbc_hmac_sha256.c.o"
+  source = "crypto/cipher_extra/e_aes_cbc_hmac_sha256.c"
+[[Object]]
+  name = "e_des.c.o"
+  source = "crypto/cipher_extra/e_des.c"
+[[Object]]
+  name = "e_null.c.o"
+  source = "crypto/cipher_extra/e_null.c"
+[[Object]]
+  name = "e_rc2.c.o"
+  source = "crypto/cipher_extra/e_rc2.c"
+[[Object]]
+  name = "e_rc4.c.o"
+  source = "crypto/cipher_extra/e_rc4.c"
+[[Object]]
+  name = "e_tls.c.o"
+  source = "crypto/cipher_extra/e_tls.c"
+[[Object]]
+  name = "tls_cbc.c.o"
+  source = "crypto/cipher_extra/tls_cbc.c"
+[[Object]]
+  name = "conf.c.o"
+  source = "crypto/conf/conf.c"
+[[Object]]
+  name = "crypto.c.o"
+  source = "crypto/crypto.c"
+[[Object]]
+  name = "curve25519.c.o"
+  source = "crypto/curve25519/curve25519.c"
+[[Object]]
+  name = "curve25519_nohw.c.o"
+  source = "crypto/curve25519/curve25519_nohw.c"
+[[Object]]
+  name = "spake25519.c.o"
+  source = "crypto/curve25519/spake25519.c"
+[[Object]]
+  name = "des.c.o"
+  source = "crypto/des/des.c"
+[[Object]]
+  name = "params.c.o"
+  source = "crypto/dh_extra/params.c"
+[[Object]]
+  name = "dh_asn1.c.o"
+  source = "crypto/dh_extra/dh_asn1.c"
+[[Object]]
+  name = "digest_extra.c.o"
+  source = "crypto/digest_extra/digest_extra.c"
+[[Object]]
+  name = "dsa.c.o"
+  source = "crypto/dsa/dsa.c"
+[[Object]]
+  name = "dsa_asn1.c.o"
+  source = "crypto/dsa/dsa_asn1.c"
+[[Object]]
+  name = "ecdh_extra.c.o"
+  source = "crypto/ecdh_extra/ecdh_extra.c"
+[[Object]]
+  name = "ecdsa_asn1.c.o"
+  source = "crypto/ecdsa_extra/ecdsa_asn1.c"
+[[Object]]
+  name = "ec_asn1.c.o"
+  source = "crypto/ec_extra/ec_asn1.c"
+[[Object]]
+  name = "ec_derive.c.o"
+  source = "crypto/ec_extra/ec_derive.c"
+[[Object]]
+  name = "hash_to_curve.c.o"
+  source = "crypto/ec_extra/hash_to_curve.c"
+[[Object]]
+  name = "err.c.o"
+  source = "crypto/err/err.c"
+[[Object]]
+  name = "err_data.c.o"
+  source = "generated-src/err_data.c"
+[[Object]]
+  name = "engine.c.o"
+  source = "crypto/engine/engine.c"
+[[Object]]
+  name = "evp_asn1.c.o"
+  source = "crypto/evp_extra/evp_asn1.c"
+[[Object]]
+  name = "p_dsa_asn1.c.o"
+  source = "crypto/evp_extra/p_dsa_asn1.c"
+[[Object]]
+  name = "p_ec_asn1.c.o"
+  source = "crypto/evp_extra/p_ec_asn1.c"
+[[Object]]
+  name = "p_ed25519.c.o"
+  source = "crypto/evp_extra/p_ed25519.c"
+[[Object]]
+  name = "p_ed25519_asn1.c.o"
+  source = "crypto/evp_extra/p_ed25519_asn1.c"
+[[Object]]
+  name = "p_kem.c.o"
+  source = "crypto/evp_extra/p_kem.c"
+[[Object]]
+  name = "p_kem_asn1.c.o"
+  source = "crypto/evp_extra/p_kem_asn1.c"
+[[Object]]
+  name = "p_rsa_asn1.c.o"
+  source = "crypto/evp_extra/p_rsa_asn1.c"
+[[Object]]
+  name = "p_x25519.c.o"
+  source = "crypto/evp_extra/p_x25519.c"
+[[Object]]
+  name = "p_x25519_asn1.c.o"
+  source = "crypto/evp_extra/p_x25519_asn1.c"
+[[Object]]
+  name = "p_methods.c.o"
+  source = "crypto/evp_extra/p_methods.c"
+[[Object]]
+  name = "print.c.o"
+  source = "crypto/evp_extra/print.c"
+[[Object]]
+  name = "scrypt.c.o"
+  source = "crypto/evp_extra/scrypt.c"
+[[Object]]
+  name = "sign.c.o"
+  source = "crypto/evp_extra/sign.c"
+[[Object]]
+  name = "ex_data.c.o"
+  source = "crypto/ex_data.c"
+[[Object]]
+  name = "hpke.c.o"
+  source = "crypto/hpke/hpke.c"
+[[Object]]
+  name = "hrss.c.o"
+  source = "crypto/hrss/hrss.c"
+[[Object]]
+  name = "kem.c.o"
+  source = "crypto/kem/kem.c"
+[[Object]]
+  name = "kem_methods.c.o"
+  source = "crypto/kem/kem_methods.c"
+[[Object]]
+  name = "kyber512r3_ref.c.o"
+  source = "crypto/kyber/kyber512r3_ref.c"
+[[Object]]
+  name = "kyber768r3_ref.c.o"
+  source = "crypto/kyber/kyber768r3_ref.c"
+[[Object]]
+  name = "kyber1024r3_ref.c.o"
+  source = "crypto/kyber/kyber1024r3_ref.c"
+[[Object]]
+  name = "fips202.c.o"
+  source = "crypto/kyber/pqcrystals_kyber_ref_common/fips202.c"
+[[Object]]
+  name = "kem_kyber.c.o"
+  source = "crypto/kyber/kem_kyber.c"
+[[Object]]
+  name = "lhash.c.o"
+  source = "crypto/lhash/lhash.c"
+[[Object]]
+  name = "mem.c.o"
+  source = "crypto/mem.c"
+[[Object]]
+  name = "obj.c.o"
+  source = "crypto/obj/obj.c"
+[[Object]]
+  name = "obj_xref.c.o"
+  source = "crypto/obj/obj_xref.c"
+[[Object]]
+  name = "ocsp_asn.c.o"
+  source = "crypto/ocsp/ocsp_asn.c"
+[[Object]]
+  name = "ocsp_client.c.o"
+  source = "crypto/ocsp/ocsp_client.c"
+[[Object]]
+  name = "ocsp_extension.c.o"
+  source = "crypto/ocsp/ocsp_extension.c"
+[[Object]]
+  name = "ocsp_http.c.o"
+  source = "crypto/ocsp/ocsp_http.c"
+[[Object]]
+  name = "ocsp_lib.c.o"
+  source = "crypto/ocsp/ocsp_lib.c"
+[[Object]]
+  name = "ocsp_print.c.o"
+  source = "crypto/ocsp/ocsp_print.c"
+[[Object]]
+  name = "ocsp_server.c.o"
+  source = "crypto/ocsp/ocsp_server.c"
+[[Object]]
+  name = "ocsp_verify.c.o"
+  source = "crypto/ocsp/ocsp_verify.c"
+[[Object]]
+  name = "pem_all.c.o"
+  source = "crypto/pem/pem_all.c"
+[[Object]]
+  name = "pem_info.c.o"
+  source = "crypto/pem/pem_info.c"
+[[Object]]
+  name = "pem_lib.c.o"
+  source = "crypto/pem/pem_lib.c"
+[[Object]]
+  name = "pem_oth.c.o"
+  source = "crypto/pem/pem_oth.c"
+[[Object]]
+  name = "pem_pk8.c.o"
+  source = "crypto/pem/pem_pk8.c"
+[[Object]]
+  name = "pem_pkey.c.o"
+  source = "crypto/pem/pem_pkey.c"
+[[Object]]
+  name = "pem_x509.c.o"
+  source = "crypto/pem/pem_x509.c"
+[[Object]]
+  name = "pem_xaux.c.o"
+  source = "crypto/pem/pem_xaux.c"
+[[Object]]
+  name = "pkcs7.c.o"
+  source = "crypto/pkcs7/pkcs7.c"
+[[Object]]
+  name = "pkcs7_x509.c.o"
+  source = "crypto/pkcs7/pkcs7_x509.c"
+[[Object]]
+  name = "pkcs8.c.o"
+  source = "crypto/pkcs8/pkcs8.c"
+[[Object]]
+  name = "pkcs8_x509.c.o"
+  source = "crypto/pkcs8/pkcs8_x509.c"
+[[Object]]
+  name = "p5_pbev2.c.o"
+  source = "crypto/pkcs8/p5_pbev2.c"
+[[Object]]
+  name = "poly1305.c.o"
+  source = "crypto/poly1305/poly1305.c"
+[[Object]]
+  name = "poly1305_arm.c.o"
+  source = "crypto/poly1305/poly1305_arm.c"
+[[Object]]
+  name = "poly1305_vec.c.o"
+  source = "crypto/poly1305/poly1305_vec.c"
+[[Object]]
+  name = "pool.c.o"
+  source = "crypto/pool/pool.c"
+[[Object]]
+  name = "deterministic.c.o"
+  source = "crypto/rand_extra/deterministic.c"
+[[Object]]
+  name = "entropy_passive.c.o"
+  source = "crypto/rand_extra/entropy_passive.c"
+[[Object]]
+  name = "forkunsafe.c.o"
+  source = "crypto/rand_extra/forkunsafe.c"
+[[Object]]
+  name = "fuchsia.c.o"
+  source = "crypto/rand_extra/fuchsia.c"
+[[Object]]
+  name = "rand_extra.c.o"
+  source = "crypto/rand_extra/rand_extra.c"
+[[Object]]
+  name = "pq_custom_randombytes.c.o"
+  source = "crypto/rand_extra/pq_custom_randombytes.c"
+[[Object]]
+  name = "windows.c.o"
+  source = "crypto/rand_extra/windows.c"
+[[Object]]
+  name = "rc4.c.o"
+  source = "crypto/rc4/rc4.c"
+[[Object]]
+  name = "refcount_c11.c.o"
+  source = "crypto/refcount_c11.c"
+[[Object]]
+  name = "refcount_lock.c.o"
+  source = "crypto/refcount_lock.c"
+[[Object]]
+  name = "refcount_win.c.o"
+  source = "crypto/refcount_win.c"
+[[Object]]
+  name = "rsa_asn1.c.o"
+  source = "crypto/rsa_extra/rsa_asn1.c"
+[[Object]]
+  name = "rsassa_pss_asn1.c.o"
+  source = "crypto/rsa_extra/rsassa_pss_asn1.c"
+[[Object]]
+  name = "rsa_print.c.o"
+  source = "crypto/rsa_extra/rsa_print.c"
+[[Object]]
+  name = "stack.c.o"
+  source = "crypto/stack/stack.c"
+[[Object]]
+  name = "siphash.c.o"
+  source = "crypto/siphash/siphash.c"
+[[Object]]
+  name = "thread.c.o"
+  source = "crypto/thread.c"
+[[Object]]
+  name = "thread_none.c.o"
+  source = "crypto/thread_none.c"
+[[Object]]
+  name = "thread_pthread.c.o"
+  source = "crypto/thread_pthread.c"
+[[Object]]
+  name = "thread_win.c.o"
+  source = "crypto/thread_win.c"
+[[Object]]
+  name = "pmbtoken.c.o"
+  source = "crypto/trust_token/pmbtoken.c"
+[[Object]]
+  name = "trust_token.c.o"
+  source = "crypto/trust_token/trust_token.c"
+[[Object]]
+  name = "voprf.c.o"
+  source = "crypto/trust_token/voprf.c"
+[[Object]]
+  name = "a_digest.c.o"
+  source = "crypto/x509/a_digest.c"
+[[Object]]
+  name = "a_sign.c.o"
+  source = "crypto/x509/a_sign.c"
+[[Object]]
+  name = "a_verify.c.o"
+  source = "crypto/x509/a_verify.c"
+[[Object]]
+  name = "algorithm.c.o"
+  source = "crypto/x509/algorithm.c"
+[[Object]]
+  name = "asn1_gen.c.o"
+  source = "crypto/x509/asn1_gen.c"
+[[Object]]
+  name = "by_dir.c.o"
+  source = "crypto/x509/by_dir.c"
+[[Object]]
+  name = "by_file.c.o"
+  source = "crypto/x509/by_file.c"
+[[Object]]
+  name = "i2d_pr.c.o"
+  source = "crypto/x509/i2d_pr.c"
+[[Object]]
+  name = "name_print.c.o"
+  source = "crypto/x509/name_print.c"
+[[Object]]
+  name = "policy.c.o"
+  source = "crypto/x509/policy.c"
+[[Object]]
+  name = "rsa_pss.c.o"
+  source = "crypto/x509/rsa_pss.c"
+[[Object]]
+  name = "t_crl.c.o"
+  source = "crypto/x509/t_crl.c"
+[[Object]]
+  name = "t_req.c.o"
+  source = "crypto/x509/t_req.c"
+[[Object]]
+  name = "t_x509.c.o"
+  source = "crypto/x509/t_x509.c"
+[[Object]]
+  name = "t_x509a.c.o"
+  source = "crypto/x509/t_x509a.c"
+[[Object]]
+  name = "x509.c.o"
+  source = "crypto/x509/x509.c"
+[[Object]]
+  name = "x509_att.c.o"
+  source = "crypto/x509/x509_att.c"
+[[Object]]
+  name = "x509_cmp.c.o"
+  source = "crypto/x509/x509_cmp.c"
+[[Object]]
+  name = "x509_d2.c.o"
+  source = "crypto/x509/x509_d2.c"
+[[Object]]
+  name = "x509_def.c.o"
+  source = "crypto/x509/x509_def.c"
+[[Object]]
+  name = "x509_ext.c.o"
+  source = "crypto/x509/x509_ext.c"
+[[Object]]
+  name = "x509_lu.c.o"
+  source = "crypto/x509/x509_lu.c"
+[[Object]]
+  name = "x509_obj.c.o"
+  source = "crypto/x509/x509_obj.c"
+[[Object]]
+  name = "x509_req.c.o"
+  source = "crypto/x509/x509_req.c"
+[[Object]]
+  name = "x509_set.c.o"
+  source = "crypto/x509/x509_set.c"
+[[Object]]
+  name = "x509_trs.c.o"
+  source = "crypto/x509/x509_trs.c"
+[[Object]]
+  name = "x509_txt.c.o"
+  source = "crypto/x509/x509_txt.c"
+[[Object]]
+  name = "x509_v3.c.o"
+  source = "crypto/x509/x509_v3.c"
+[[Object]]
+  name = "x509_vfy.c.o"
+  source = "crypto/x509/x509_vfy.c"
+[[Object]]
+  name = "x509_vpm.c.o"
+  source = "crypto/x509/x509_vpm.c"
+[[Object]]
+  name = "x509cset.c.o"
+  source = "crypto/x509/x509cset.c"
+[[Object]]
+  name = "x509name.c.o"
+  source = "crypto/x509/x509name.c"
+[[Object]]
+  name = "x509rset.c.o"
+  source = "crypto/x509/x509rset.c"
+[[Object]]
+  name = "x509spki.c.o"
+  source = "crypto/x509/x509spki.c"
+[[Object]]
+  name = "x_algor.c.o"
+  source = "crypto/x509/x_algor.c"
+[[Object]]
+  name = "x_all.c.o"
+  source = "crypto/x509/x_all.c"
+[[Object]]
+  name = "x_attrib.c.o"
+  source = "crypto/x509/x_attrib.c"
+[[Object]]
+  name = "x_crl.c.o"
+  source = "crypto/x509/x_crl.c"
+[[Object]]
+  name = "x_exten.c.o"
+  source = "crypto/x509/x_exten.c"
+[[Object]]
+  name = "x_info.c.o"
+  source = "crypto/x509/x_info.c"
+[[Object]]
+  name = "x_name.c.o"
+  source = "crypto/x509/x_name.c"
+[[Object]]
+  name = "x_pkey.c.o"
+  source = "crypto/x509/x_pkey.c"
+[[Object]]
+  name = "x_pubkey.c.o"
+  source = "crypto/x509/x_pubkey.c"
+[[Object]]
+  name = "x_req.c.o"
+  source = "crypto/x509/x_req.c"
+[[Object]]
+  name = "x_sig.c.o"
+  source = "crypto/x509/x_sig.c"
+[[Object]]
+  name = "x_spki.c.o"
+  source = "crypto/x509/x_spki.c"
+[[Object]]
+  name = "x_val.c.o"
+  source = "crypto/x509/x_val.c"
+[[Object]]
+  name = "x_x509.c.o"
+  source = "crypto/x509/x_x509.c"
+[[Object]]
+  name = "x_x509a.c.o"
+  source = "crypto/x509/x_x509a.c"
+[[Object]]
+  name = "v3_akey.c.o"
+  source = "crypto/x509v3/v3_akey.c"
+[[Object]]
+  name = "v3_akeya.c.o"
+  source = "crypto/x509v3/v3_akeya.c"
+[[Object]]
+  name = "v3_alt.c.o"
+  source = "crypto/x509v3/v3_alt.c"
+[[Object]]
+  name = "v3_bcons.c.o"
+  source = "crypto/x509v3/v3_bcons.c"
+[[Object]]
+  name = "v3_bitst.c.o"
+  source = "crypto/x509v3/v3_bitst.c"
+[[Object]]
+  name = "v3_conf.c.o"
+  source = "crypto/x509v3/v3_conf.c"
+[[Object]]
+  name = "v3_cpols.c.o"
+  source = "crypto/x509v3/v3_cpols.c"
+[[Object]]
+  name = "v3_crld.c.o"
+  source = "crypto/x509v3/v3_crld.c"
+[[Object]]
+  name = "v3_enum.c.o"
+  source = "crypto/x509v3/v3_enum.c"
+[[Object]]
+  name = "v3_extku.c.o"
+  source = "crypto/x509v3/v3_extku.c"
+[[Object]]
+  name = "v3_genn.c.o"
+  source = "crypto/x509v3/v3_genn.c"
+[[Object]]
+  name = "v3_ia5.c.o"
+  source = "crypto/x509v3/v3_ia5.c"
+[[Object]]
+  name = "v3_info.c.o"
+  source = "crypto/x509v3/v3_info.c"
+[[Object]]
+  name = "v3_int.c.o"
+  source = "crypto/x509v3/v3_int.c"
+[[Object]]
+  name = "v3_lib.c.o"
+  source = "crypto/x509v3/v3_lib.c"
+[[Object]]
+  name = "v3_ncons.c.o"
+  source = "crypto/x509v3/v3_ncons.c"
+[[Object]]
+  name = "v3_ocsp.c.o"
+  source = "crypto/x509v3/v3_ocsp.c"
+[[Object]]
+  name = "v3_pcons.c.o"
+  source = "crypto/x509v3/v3_pcons.c"
+[[Object]]
+  name = "v3_pmaps.c.o"
+  source = "crypto/x509v3/v3_pmaps.c"
+[[Object]]
+  name = "v3_prn.c.o"
+  source = "crypto/x509v3/v3_prn.c"
+[[Object]]
+  name = "v3_purp.c.o"
+  source = "crypto/x509v3/v3_purp.c"
+[[Object]]
+  name = "v3_skey.c.o"
+  source = "crypto/x509v3/v3_skey.c"
+[[Object]]
+  name = "v3_utl.c.o"
+  source = "crypto/x509v3/v3_utl.c"
+[[Object]]
+  name = "base64_bio.c.o"
+  source = "crypto/decrepit/bio/base64_bio.c"
+[[Object]]
+  name = "blowfish.c.o"
+  source = "crypto/decrepit/blowfish/blowfish.c"
+[[Object]]
+  name = "cast.c.o"
+  source = "crypto/decrepit/cast/cast.c"
+[[Object]]
+  name = "cast_tables.c.o"
+  source = "crypto/decrepit/cast/cast_tables.c"
+[[Object]]
+  name = "cfb.c.o"
+  source = "crypto/decrepit/cfb/cfb.c"
+[[Object]]
+  name = "dh_decrepit.c.o"
+  source = "crypto/decrepit/dh/dh_decrepit.c"
+[[Object]]
+  name = "evp_do_all.c.o"
+  source = "crypto/decrepit/evp/evp_do_all.c"
+[[Object]]
+  name = "ripemd.c.o"
+  source = "crypto/decrepit/ripemd/ripemd.c"
+[[Object]]
+  name = "rsa_decrepit.c.o"
+  source = "crypto/decrepit/rsa/rsa_decrepit.c"
+[[Object]]
+  name = "x509_decrepit.c.o"
+  source = "crypto/decrepit/x509/x509_decrepit.c"
+[[Object]]
+  name = "chacha-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/chacha/chacha-x86_64.S"
+[[Object]]
+  name = "chacha20_poly1305_x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/cipher_extra/chacha20_poly1305_x86_64.S"
+[[Object]]
+  name = "aes128gcmsiv-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/cipher_extra/aes128gcmsiv-x86_64.S"
+[[Object]]
+  name = "aesni-sha1-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/cipher_extra/aesni-sha1-x86_64.S"
+[[Object]]
+  name = "aesni-sha256-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/cipher_extra/aesni-sha256-x86_64.S"
+[[Object]]
+  name = "trampoline-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/test/trampoline-x86_64.S"
+[[Object]]
+  name = "poly_rq_mul.S.o"
+  source = "crypto/hrss/asm/poly_rq_mul.S"
+[[Object]]
+  name = "bcm.c.o"
+  source = "crypto/fipsmodule/bcm.c"
+[[Object]]
+  name = "fips_shared_support.c.o"
+  source = "crypto/fipsmodule/fips_shared_support.c"
+[[Object]]
+  name = "cpucap.c.o"
+  source = "crypto/fipsmodule/cpucap/cpucap.c"
+[[Object]]
+  name = "aesni-gcm-avx512.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/aesni-gcm-avx512.S"
+[[Object]]
+  name = "aesni-gcm-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/aesni-gcm-x86_64.S"
+[[Object]]
+  name = "aesni-xts-avx512.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/aesni-xts-avx512.S"
+[[Object]]
+  name = "aesni-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/aesni-x86_64.S"
+[[Object]]
+  name = "ghash-ssse3-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/ghash-ssse3-x86_64.S"
+[[Object]]
+  name = "ghash-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/ghash-x86_64.S"
+[[Object]]
+  name = "md5-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/md5-x86_64.S"
+[[Object]]
+  name = "p256-x86_64-asm.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/p256-x86_64-asm.S"
+[[Object]]
+  name = "p256_beeu-x86_64-asm.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/p256_beeu-x86_64-asm.S"
+[[Object]]
+  name = "rdrand-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/rdrand-x86_64.S"
+[[Object]]
+  name = "rsaz-avx2.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/rsaz-avx2.S"
+[[Object]]
+  name = "sha1-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/sha1-x86_64.S"
+[[Object]]
+  name = "sha256-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/sha256-x86_64.S"
+[[Object]]
+  name = "sha512-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/sha512-x86_64.S"
+[[Object]]
+  name = "vpaes-x86_64.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/vpaes-x86_64.S"
+[[Object]]
+  name = "x86_64-mont5.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/x86_64-mont5.S"
+[[Object]]
+  name = "x86_64-mont.S.o"
+  source = "generated-src/mac-x86_64/crypto/fipsmodule/x86_64-mont.S"
+[[Object]]
+  name = "bignum_add_p384.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_add_p384.S"
+[[Object]]
+  name = "bignum_sub_p384.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_sub_p384.S"
+[[Object]]
+  name = "bignum_neg_p384.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_neg_p384.S"
+[[Object]]
+  name = "bignum_tomont_p384.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_tomont_p384.S"
+[[Object]]
+  name = "bignum_deamont_p384.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_deamont_p384.S"
+[[Object]]
+  name = "bignum_montmul_p384.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_montmul_p384.S"
+[[Object]]
+  name = "bignum_montmul_p384_alt.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_montmul_p384_alt.S"
+[[Object]]
+  name = "bignum_montsqr_p384.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_montsqr_p384.S"
+[[Object]]
+  name = "bignum_montsqr_p384_alt.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_montsqr_p384_alt.S"
+[[Object]]
+  name = "bignum_nonzero_6.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_nonzero_6.S"
+[[Object]]
+  name = "bignum_littleendian_6.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_littleendian_6.S"
+[[Object]]
+  name = "bignum_add_p521.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_add_p521.S"
+[[Object]]
+  name = "bignum_sub_p521.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_sub_p521.S"
+[[Object]]
+  name = "bignum_neg_p521.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_neg_p521.S"
+[[Object]]
+  name = "bignum_mul_p521.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_mul_p521.S"
+[[Object]]
+  name = "bignum_mul_p521_alt.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_mul_p521_alt.S"
+[[Object]]
+  name = "bignum_sqr_p521.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_sqr_p521.S"
+[[Object]]
+  name = "bignum_sqr_p521_alt.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_sqr_p521_alt.S"
+[[Object]]
+  name = "bignum_tolebytes_p521.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_tolebytes_p521.S"
+[[Object]]
+  name = "bignum_fromlebytes_p521.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p521/bignum_fromlebytes_p521.S"
+[[Object]]
+  name = "bignum_tomont_p384_alt.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_tomont_p384_alt.S"
+[[Object]]
+  name = "bignum_deamont_p384_alt.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/p384/bignum_deamont_p384_alt.S"
+[[Object]]
+  name = "curve25519_x25519.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/curve25519/curve25519_x25519.S"
+[[Object]]
+  name = "curve25519_x25519_alt.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/curve25519/curve25519_x25519_alt.S"
+[[Object]]
+  name = "curve25519_x25519base.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/curve25519/curve25519_x25519base.S"
+[[Object]]
+  name = "curve25519_x25519base_alt.S.S.o"
+  source = "third_party/s2n-bignum/x86_att/curve25519/curve25519_x25519base_alt.S"

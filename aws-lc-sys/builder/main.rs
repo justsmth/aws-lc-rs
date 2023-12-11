@@ -90,7 +90,7 @@ impl OutputLib {
             OutputLib::RustWrapper => "rust_wrapper",
         };
         if let Some(prefix) = prefix {
-            format!("{prefix}_{name}")
+            format!("{prefix}{name}")
         } else {
             name.to_string()
         }
@@ -205,7 +205,7 @@ fn prepare_cmake_build(manifest_dir: &PathBuf, build_prefix: String) -> cmake::C
 }
 
 fn build_rust_wrapper(manifest_dir: &PathBuf) -> PathBuf {
-    prepare_cmake_build(manifest_dir, prefix_string() + "_")
+    prepare_cmake_build(manifest_dir, prefix_string())
         .configure_arg("--no-warn-unused-cli")
         .build()
 }
@@ -290,6 +290,56 @@ macro_rules! cfg_bindgen_platform {
         };
     };
 }
+use serde::Deserialize;
+use std::collections::HashMap;
+#[derive(Debug, Deserialize)]
+struct Config {
+    #[serde(flatten)]
+    object_files: HashMap<String, Vec<ObjectFile>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ObjectFile {
+    name: String,
+    source: String,
+}
+
+static MACOS_X86_64_BUILD_CFG_STR: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../mac-x86-64-build.toml"
+));
+
+fn simple_build(manifest_dir: &PathBuf, out_dir: &PathBuf) {
+    let mut build_cfg: Config = toml::from_str(MACOS_X86_64_BUILD_CFG_STR).unwrap();
+
+    let object_files = build_cfg.object_files.get("Object").unwrap();
+
+    let mut cc_build = cc::Build::default();
+    cc_build
+        .out_dir(out_dir)
+        .flag("-std=c99")
+        .flag("-Wno-unused-parameter")
+        .cpp(false)
+        .define("BORINGSSL_IMPLEMENTATION", "1")
+        .define("BORINGSSL_PREFIX", prefix_string().as_str())
+        .include(manifest_dir.join("include"))
+        .include(manifest_dir.join("generated-include"))
+        .include(manifest_dir.join("aws-lc").join("include"))
+        .include(
+            manifest_dir
+                .join("aws-lc")
+                .join("third_party")
+                .join("s2n-bignum")
+                .join("include"),
+        )
+        .file(manifest_dir.join("rust_wrapper.c"));
+    for object_file in object_files {
+        cc_build.file(manifest_dir.join("aws-lc").join(&object_file.source));
+    }
+    cc_build.compile(format!("{}crypto", prefix_string()).as_str());
+}
+
+fn build_object(object_file: &ObjectFile, manifest_dir: &PathBuf, out_dir: &PathBuf) {}
 
 fn main() {
     use crate::OutputLib::{Crypto, RustWrapper, Ssl};
@@ -318,8 +368,10 @@ fn main() {
     let manifest_dir = env::current_dir().unwrap();
     let manifest_dir = dunce::canonicalize(Path::new(&manifest_dir)).unwrap();
     let prefix = prefix_string();
+    let out_dir = Path::new(&env::var("OUT_DIR").unwrap()).to_path_buf();
+    //let out_dir = build_rust_wrapper(&manifest_dir);
 
-    let out_dir = build_rust_wrapper(&manifest_dir);
+    simple_build(&manifest_dir, &out_dir);
 
     #[allow(unused_assignments)]
     let mut bindings_available = false;
@@ -353,36 +405,36 @@ fn main() {
         bindings_available,
         "aws-lc-sys build failed. Please enable the 'bindgen' feature on aws-lc-rs or aws-lc-sys"
     );
+    /*
 
     println!(
         "cargo:rustc-link-search=native={}",
-        artifact_output_dir(&out_dir).display()
+        //artifact_output_dir(&out_dir).display()
+        &out_dir.display()
     );
-
     println!(
         "cargo:rustc-link-lib={}={}",
         output_lib_type.rust_lib_type(),
         Crypto.libname(Some(&prefix))
     );
 
-    if cfg!(feature = "ssl") {
+        if cfg!(feature = "ssl") {
+            println!(
+                "cargo:rustc-link-lib={}={}",
+                output_lib_type.rust_lib_type(),
+                Ssl.libname(Some(&prefix))
+            );
+        }
+
         println!(
             "cargo:rustc-link-lib={}={}",
             output_lib_type.rust_lib_type(),
-            Ssl.libname(Some(&prefix))
+            RustWrapper.libname(Some(&prefix))
         );
-    }
+    */
 
-    println!(
-        "cargo:rustc-link-lib={}={}",
-        output_lib_type.rust_lib_type(),
-        RustWrapper.libname(Some(&prefix))
-    );
-
-    println!(
-        "cargo:include={}",
-        setup_include_paths(&out_dir, &manifest_dir).display()
-    );
+    let include_path = setup_include_paths(&out_dir, &manifest_dir);
+    println!("cargo:include={}", include_path.display());
 
     println!("cargo:rerun-if-changed=builder/");
     println!("cargo:rerun-if-changed=aws-lc/");

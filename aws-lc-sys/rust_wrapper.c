@@ -4,7 +4,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
 #include "rust_wrapper.h"
-
+#include "openssl/crypto.h"
+#include "openssl/err.h"
 
 int ERR_GET_LIB_RUST(uint32_t packed_error) {
   return ERR_GET_LIB(packed_error);
