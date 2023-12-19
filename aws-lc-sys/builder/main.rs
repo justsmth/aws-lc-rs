@@ -8,6 +8,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use cc_builder::CcBuilder;
 use cmake_builder::CmakeBuilder;
 
 #[cfg(any(
@@ -20,6 +21,7 @@ use cmake_builder::CmakeBuilder;
     ))
 ))]
 mod bindgen;
+mod cc_builder;
 mod cmake_builder;
 
 pub(crate) fn get_aws_lc_include_path(manifest_dir: &Path) -> PathBuf {
