@@ -26,15 +26,23 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 AWS_LC_ROOT="${REPO_ROOT}/aws-lc-sys/aws-lc"
 
 OS_SRC="$(uname -s)"
-if [[ "${OS_SRC}" == "Darwin" ]]; then
+OS_SRC="${OS_SRC,,}"
+if [[ "${OS_SRC}" == "darwin" ]]; then
   OS_SRC="mac"
 fi
+
 CPU_SRC="$(uname -m)"
+CPU_SRC="${CPU_SRC,,}"
 
 NO_ASSEMBLY=0
 OUTPUT="${REPO_ROOT}/aws-lc-sys/builder/${OS_SRC}-${CPU_SRC}"
 FORMAT="toml"
 FORCE=0
+
+if [[ "${CPU_SRC}" == "aarch64" ]]; then 
+  CPU_SRC="aarch64|arm"
+fi
+
 while getopts "s:c:Cfo:t:" arg; do
   case "$arg" in
     s)
@@ -200,7 +208,7 @@ function collect_library() {
     fi
     if [[ ${SRC_FOUND} -eq 0 ]]; then
       OBJ_FILE_SRC_NAME="${OBJ_FILE_NAME//\.o/}"
-      mapfile -t OBJ_FILE_SRC_FILES < <(find "${AWS_LC_ROOT}"/generated-src -type f -name "${OBJ_FILE_SRC_NAME}" | egrep "\.S$" | grep "${OS_SRC}" | grep "${CPU_SRC}" )
+      mapfile -t OBJ_FILE_SRC_FILES < <(find "${AWS_LC_ROOT}"/generated-src -type f -name "${OBJ_FILE_SRC_NAME}" | egrep "\.S$" | egrep "\'${OS_SRC}\'" | egrep "\'${CPU_SRC}\'" )
       if [[ -n "${OBJ_FILE_SRC_NAME}" && ${#OBJ_FILE_SRC_FILES[@]} -gt 0 ]]; then
         SRC_FOUND=1
         REL_SRC_PATH="${OBJ_FILE_SRC_FILES[0]//${AWS_LC_ROOT}\//}"
@@ -222,7 +230,7 @@ function collect_library() {
       if [[ "${CPU_SRC}" == "x86_64" ]]; then
         CPU_FILTER="x86"
       fi
-      mapfile -t OBJ_FILE_SRC_FILES < <(find "${AWS_LC_ROOT}"/third_party/s2n-bignum -type f -name "${OBJ_FILE_SRC_NAME}" | grep "${CPU_FILTER}")
+      mapfile -t OBJ_FILE_SRC_FILES < <(find "${AWS_LC_ROOT}"/third_party/s2n-bignum -type f -name "${OBJ_FILE_SRC_NAME}" | egrep "\'${CPU_FILTER}\'")
       if [[ -n "${OBJ_FILE_SRC_NAME}" && ${#OBJ_FILE_SRC_FILES[@]} -gt 0 ]]; then
         SRC_FOUND=1
         REL_SRC_PATH="${OBJ_FILE_SRC_FILES[0]//${AWS_LC_ROOT}\//}"
