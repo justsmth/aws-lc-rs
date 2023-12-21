@@ -7,3 +7,9 @@ passthrough = [
     "RUST_BACKTRACE",
     "RUST_LOG"
 ]
+
+[target.x86_64-unknown-freebsd]
+pre-build = ["pushd / && source /freebsd-install.sh && install_freebsd_package llvm" ]
+
+[target.x86_64-unknown-freebsd.env]
+passthrough = ["LIBCLANG_PATH=/usr/local/lib"]
