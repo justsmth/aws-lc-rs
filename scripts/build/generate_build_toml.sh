@@ -4,6 +4,11 @@
 
 set -ex
 
+if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
+    echo Must use bash 4 or later: ${BASH_VERSION}
+    exit 1
+fi
+
 SCRIPT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 PUBLISH=0
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -29,11 +34,19 @@ function collect_source_files() {
     fi
 }
 
+function find_generated_src_dir() {
+    OS_NAME=`uname`
+    OS_NAME="${OS_NAME,,}"
+    ARCH_NAME=`uname -m`
+    ARCH_NAME="${ARCH_NAME,,}"
+    echo "${OS_NAME}-${ARCH_NAME}"
+}
 
 function cleanup_source_files() {
+    GS_DIR=$(find_generated_src_dir)
     for FILE in ${@}; do
         FILE=$(realpath ${FILE})
-        echo ${FILE} | sed -e "s/.*\/aws-lc-sys\/aws-lc\///" | sed -e "s/.*\/out\/build\/aws-lc\//generated-src\//"
+        echo ${FILE} | sed -e "s/.*\/aws-lc-sys\/aws-lc\///" | sed -e "s/.*\/out\/build\/aws-lc\//generated-src\/${GS_DIR}\//"
     done
 }
 
