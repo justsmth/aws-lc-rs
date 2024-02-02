@@ -114,13 +114,15 @@ impl CmakeBuilder {
                 cmake_cfg.define("CMAKE_OSX_ARCHITECTURES", "arm64");
             }
         }
-        if Some(true) == env_var_to_bool("AWS_LC_SYS_CC_TOML_GENERATOR")
-            && target_vendor() == "apple"
-        {
-            cmake_cfg.define(
-                "CMAKE_C_FLAGS",
-                "-ginline-line-tables -grecord-gcc-switches",
-            );
+        if Some(true) == env_var_to_bool("AWS_LC_SYS_CC_TOML_GENERATOR") {
+            if target_vendor() == "apple" {
+                cmake_cfg.define(
+                    "CMAKE_C_FLAGS",
+                    "-ginline-line-tables -grecord-gcc-switches",
+                );
+            } else if target_os() == "linux" {
+                cmake_cfg.define("CMAKE_C_FLAGS", "-grecord-gcc-switches");
+            }
         }
 
         if cfg!(feature = "asan") {
