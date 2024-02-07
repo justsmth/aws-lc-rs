@@ -2,7 +2,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0 OR ISC
 
-set -e
+set -ex
 
 if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     echo Must use bash 4 or later: ${BASH_VERSION}
@@ -80,6 +80,9 @@ function verify_source_files() {
 }
 
 function generate_toml() {
+      declare -a SOURCES=( "${@:2:$1}" ); shift "$(( $1 + 1 ))"
+      declare -a SRC_NEEDING_PREPROCESSOR=( "${@:2:$1}" ); shift "$(( $1 + 1 ))"
+
     cat << EOF
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0 OR ISC
@@ -91,17 +94,39 @@ name = "crypto"
 flags = []
 sources = [
 EOF
-    for FILE in "${@}"; do
+    for FILE in "${SOURCES[@]}"; do
+        echo "    \"${FILE}\","
+    done
+    echo "]"
+
+    echo "src_needing_preprocessor = ["
+    for FILE in "${SRC_NEEDING_PREPROCESSOR[@]}"; do
         echo "    \"${FILE}\","
     done
     echo "]"
 
 }
 
+function get_standard_sources() {
+  for FILE in "${@}"; do
+    if [[ ! ${FILE} =~ third_party/s2n-bignum/* ]]; then
+      echo "${FILE}"
+    fi
+  done
+}
+
+function get_sources_needing_preprocessor() {
+  for FILE in "${@}"; do
+    if [[ ${FILE} =~ third_party/s2n-bignum/* ]]; then
+      echo "${FILE}"
+    fi
+  done
+}
+
 pushd "${REPO_ROOT}"
 
-cargo clean
-AWS_LC_SYS_CMAKE_BUILDER=1 AWS_LC_SYS_CC_TOML_GENERATOR=1 cargo build --package aws-lc-sys --profile dev
+#cargo clean
+#AWS_LC_SYS_CMAKE_BUILDER=1 AWS_LC_SYS_CC_TOML_GENERATOR=1 cargo build --package aws-lc-sys --profile dev
 
 LIB_CRYPTO_PATH=$(find target/debug -name "libaws_lc_0_*crypto.a"| head -n 1)
 LIB_CRYPTO_PATH="${REPO_ROOT}/${LIB_CRYPTO_PATH}"
@@ -114,11 +139,18 @@ verify_source_files "${PROCESSED_SRC_FILES[@]}"
 RUST_TRIPLE=$(rustc -vV | grep host | sed -e 's/host: *\(\w*\)/\1/')
 BUILD_CFG_PATH="${BUILD_CFG_DIR}/${RUST_TRIPLE}.toml"
 
-generate_toml ${PROCESSED_SRC_FILES[@]} > ${BUILD_CFG_PATH}
+SOURCES=($(get_standard_sources "${PROCESSED_SRC_FILES[@]}"))
+SRC_NEEDING_PREPROCESSOR=($(get_sources_needing_preprocessor "${PROCESSED_SRC_FILES[@]}"))
+
+generate_toml \
+  "${#SOURCES[@]}" "${SOURCES[@]}" \
+  "${#SRC_NEEDING_PREPROCESSOR[@]}" "${SRC_NEEDING_PREPROCESSOR[@]}" > ${BUILD_CFG_PATH}
 
 echo
 echo Build configuration written to: ${BUILD_CFG_PATH}
 echo
+
+exit 1
 
 cargo clean
 AWS_LC_SYS_CMAKE_BUILDER=0 cargo build --package aws-lc-sys --profile dev

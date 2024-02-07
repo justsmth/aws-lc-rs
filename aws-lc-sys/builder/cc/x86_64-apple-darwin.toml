@@ -263,6 +263,8 @@ sources = [
     "generated-src/mac-x86_64/crypto/fipsmodule/x86_64-mont.S",
     "generated-src/mac-x86_64/crypto/fipsmodule/x86_64-mont5.S",
     "generated-src/mac-x86_64/crypto/test/trampoline-x86_64.S",
+]
+src_needing_preprocessor = [
     "third_party/s2n-bignum/x86_att/curve25519/bignum_madd_n25519.S",
     "third_party/s2n-bignum/x86_att/curve25519/bignum_madd_n25519_alt.S",
     "third_party/s2n-bignum/x86_att/curve25519/bignum_mod_n25519.S",
