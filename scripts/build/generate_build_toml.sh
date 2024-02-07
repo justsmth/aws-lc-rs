@@ -47,6 +47,10 @@ function find_generated_src_dir() {
         exit 1
     fi
     ARCH_NAME=$(uname -m)
+    if [[ "${ARCH_NAME}" == arm64 && ${OS_NAME} == "mac" ]]; then
+      OS_NAME=ios
+      ARCH_NAME=aarch64
+    fi
     echo "${OS_NAME}-${ARCH_NAME}"
 }
 

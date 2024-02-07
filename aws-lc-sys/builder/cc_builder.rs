@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
-use crate::{target, target_os, OutputLibType};
+use crate::{target, target_os, target_vendor, OutputLibType};
 use std::path::PathBuf;
 
 pub(crate) struct CcBuilder {
@@ -94,6 +94,8 @@ impl crate::Builder for CcBuilder {
                 .file(self.manifest_dir.join("rust_wrapper.c"));
             if target_os() == "linux" {
                 cc_build.define("_XOPEN_SOURCE", "700").flag("-lpthread");
+            } else if target_vendor() == "apple" {
+                cc_build.asm_flag("-xassembler-with-cpp");
             }
 
             for source in &lib.sources {
