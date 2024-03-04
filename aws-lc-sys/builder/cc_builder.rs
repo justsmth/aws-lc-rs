@@ -146,6 +146,8 @@ impl crate::Builder for CcBuilder {
                 cc_build.compile(&lib.name);
             }
         }
+
+        println!("cargo:root={}", self.out_dir.display());
         Ok(())
     }
 }
