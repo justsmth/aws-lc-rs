@@ -2,55 +2,87 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0 OR ISC
 
-set -e
+set -ex
 
 if [[ ${BASH_VERSINFO[0]} -lt 4 ]]; then
     echo Must use bash 4 or later: ${BASH_VERSION}
     exit 1
 fi
 
+CROSS_TARGET_ARCH=''
+
+while getopts "t:" option; do
+  case ${option} in
+  t)
+    CROSS_TARGET_ARCH="${OPTARG}";
+    ;;
+  *)
+    echo Invalid argument: -"${?}"
+    usage
+    exit 1
+    ;;
+  esac
+done
+
 SCRIPT_DIR=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
-PUBLISH=0
 REPO_ROOT=$(git rev-parse --show-toplevel)
 SYS_CRATE_DIR="${REPO_ROOT}/aws-lc-sys"
 BUILD_CFG_DIR="${SYS_CRATE_DIR}/builder/cc"
 
+function find_target() {
+  if [[ -z "${CROSS_TARGET_ARCH}" ]]; then
+    rustc -vV | grep host | sed -e 's/host: *\(\w*\)/\1/'
+  else
+    echo ${CROSS_TARGET_ARCH}
+  fi
+}
+
 function collect_source_files() {
-    OS_NAME=$(uname)
-    if [[ "${OS_NAME}" =~ [Dd]arwin ]]; then
+    TARGET_PLATFORM_ARCH=$(find_target)
+    if [[ "${TARGET_PLATFORM_ARCH}" =~ apple ]]; then
         dwarfdump --debug-info "${1}" | grep DW_AT_name | grep "$(pwd)" | cut -d\" -f 2 | sort | uniq
-    elif [[ "${OS_NAME}" =~ [Ll]inux ]]; then
-        objdump -g "${1}" | grep DW_AT_name | grep "$(pwd)" | cut -d: -f 4 | sort | uniq
+    elif [[ "${TARGET_PLATFORM_ARCH}" =~ linux ]]; then
+        objdump -g "${1}" | grep DW_AT_name | grep "$(pwd)" | cut -d: -f 4 | grep -E '\.[csS]$' | sort | uniq
     else
-        echo Unknown OS: "${OS_NAME}"
+        echo Unknown OS: "${TARGET_PLATFORM_ARCH}"
         exit 1
     fi
 }
 
 function find_s2n_bignum_src_dir() {
-    ARCH_NAME=$(uname -m)
-    if [[ "${ARCH_NAME}" =~ x86 ]]; then
-        echo x86_att
-    else
+    TARGET_PLATFORM_ARCH=$(find_target)
+    if [[ "${TARGET_PLATFORM_ARCH}" =~ aarch64 ]]; then
         echo arm
+    else
+        echo x86_att
     fi
 }
 
+
 function find_generated_src_dir() {
-    OS_NAME=$(uname)
-    if [[ "${OS_NAME}" =~ [Dd]arwin ]]; then
-        OS_NAME=mac
-    elif [[ "${OS_NAME}" =~ [Ll]inux ]]; then
-        OS_NAME=linux
+    TARGET_PLATFORM_ARCH=$(find_target)
+
+    if [[ "${TARGET_PLATFORM_ARCH}" =~ "linux" ]]; then
+      OS_NAME="linux"
+    elif [[ "${TARGET_PLATFORM_ARCH}" =~ "apple" ]]; then
+      OS_NAME="mac"
+      if [[ "${TARGET_PLATFORM_ARCH}" =~ "aarch64" ]]; then
+        OS_NAME="ios"
+      fi
     else
-        echo Unknown OS: "${OS_NAME}"
-        exit 1
+      echo Unknown OS: "${TARGET_PLATFORM_ARCH}"
+      exit 1
     fi
-    ARCH_NAME=$(uname -m)
-    if [[ "${ARCH_NAME}" == arm64 && ${OS_NAME} == "mac" ]]; then
-      OS_NAME=ios
-      ARCH_NAME=aarch64
+
+    if [[ "${TARGET_PLATFORM_ARCH}" =~ "aarch64" ]]; then
+      ARCH_NAME="aarch64"
+    elif [[ "${TARGET_PLATFORM_ARCH}" =~ "x86-64" ]]; then
+      ARCH_NAME="x86-64"
+    else
+      echo Unknown ARCH: "${TARGET_PLATFORM_ARCH}"
+      exit 1
     fi
+
     echo "${OS_NAME}-${ARCH_NAME}"
 }
 
@@ -105,9 +137,20 @@ EOF
 pushd "${REPO_ROOT}"
 
 cargo clean
-AWS_LC_SYS_CMAKE_BUILDER=1 AWS_LC_SYS_CC_TOML_GENERATOR=1 cargo build --package aws-lc-sys --profile dev
 
+if [[ -z "${CROSS_TARGET_ARCH}" ]]; then
+AWS_LC_SYS_CMAKE_BUILDER=1 AWS_LC_SYS_CC_TOML_GENERATOR=1 cargo build --package aws-lc-sys --profile dev
+else
+# Install cross
+cargo install cross --locked --git https://github.com/cross-rs/cross
+AWS_LC_SYS_CMAKE_BUILDER=1 AWS_LC_SYS_CC_TOML_GENERATOR=1 cross build --package aws-lc-sys --profile dev --target ${CROSS_TARGET_ARCH}
+fi
+
+if [[ -z "${CROSS_TARGET_ARCH}" ]]; then
 LIB_CRYPTO_PATH=$(find target/debug -name "libaws_lc_0_*crypto.a"| head -n 1)
+else
+LIB_CRYPTO_PATH=$(find target/"${CROSS_TARGET_ARCH}" -name "libaws_lc_0_*crypto.a"| head -n 1)
+fi
 LIB_CRYPTO_PATH="${REPO_ROOT}/${LIB_CRYPTO_PATH}"
 
 SOURCE_FILES=($(collect_source_files "${LIB_CRYPTO_PATH}"))
@@ -115,8 +158,10 @@ PROCESSED_SRC_FILES=($(process_source_files "${SOURCE_FILES[@]}"))
 
 verify_source_files "${PROCESSED_SRC_FILES[@]}"
 
-RUST_TRIPLE=$(rustc -vV | grep host | sed -e 's/host: *\(\w*\)/\1/')
+RUST_TRIPLE=$(find_target)
 BUILD_CFG_PATH="${BUILD_CFG_DIR}/${RUST_TRIPLE}.toml"
+
+exit 1
 
 generate_toml ${PROCESSED_SRC_FILES[@]} > ${BUILD_CFG_PATH}
 
@@ -125,9 +170,13 @@ echo Build configuration written to: ${BUILD_CFG_PATH}
 echo
 
 cargo clean
+if [[ -z "${CROSS_TARGET_ARCH}" ]]; then
 AWS_LC_SYS_CMAKE_BUILDER=0 cargo build --package aws-lc-sys --profile dev
 AWS_LC_SYS_CMAKE_BUILDER=0 cargo test --package aws-lc-rs --profile dev
-
+else
+AWS_LC_SYS_CMAKE_BUILDER=0 cross build --package aws-lc-sys --profile dev --target ${CROSS_TARGET_ARCH}
+AWS_LC_SYS_CMAKE_BUILDER=0 cross test --package aws-lc-rs --profile dev --target ${CROSS_TARGET_ARCH}
+fi
 popd
 
 echo

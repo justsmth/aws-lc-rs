@@ -121,7 +121,7 @@ impl CmakeBuilder {
                     "-ginline-line-tables -grecord-gcc-switches",
                 );
             } else if target_os() == "linux" {
-                cmake_cfg.define("CMAKE_C_FLAGS", "-grecord-gcc-switches");
+                cmake_cfg.define("CMAKE_C_FLAGS", "-fno-eliminate-unused-debug-symbols -fno-merge-debug-strings -fvar-tracking -gno-variable-location-views -gno-internal-reset-location-views -grecord-gcc-switches");
             }
         }
 
