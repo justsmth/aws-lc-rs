@@ -13,12 +13,10 @@ use cmake_builder::CmakeBuilder;
 
 #[cfg(any(
     feature = "bindgen",
-    not(any(
-        all(target_os = "macos", target_arch = "x86_64"),
-        all(target_os = "linux", target_arch = "x86"),
-        all(target_os = "linux", target_arch = "x86_64"),
-        all(target_os = "linux", target_arch = "aarch64")
-    ))
+    any(
+        not(any(target_os = "macos", target_os = "linux")),
+        not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "x86"))
+    )
 ))]
 mod bindgen;
 mod cc_builder;
@@ -147,14 +145,12 @@ fn test_command(executable: &OsStr, args: &[&OsStr]) -> TestCommandResult {
 
 #[cfg(any(
     feature = "bindgen",
-    not(any(
-        all(target_os = "macos", target_arch = "x86_64"),
-        all(target_os = "linux", target_arch = "x86"),
-        all(target_os = "linux", target_arch = "x86_64"),
-        all(target_os = "linux", target_arch = "aarch64")
-    ))
+    any(
+        not(any(target_os = "macos", target_os = "linux")),
+        not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "x86"))
+    )
 ))]
-fn generate_bindings(manifest_dir: &Path, prefix: &str, bindings_path: &PathBuf) {
+fn generate_bindings(manifest_dir: &Path, prefix: Option<String>, bindings_path: &PathBuf) {
     let options = bindgen::BindingOptions {
         build_prefix: prefix,
         include_ssl: cfg!(feature = "ssl"),
@@ -169,11 +165,11 @@ fn generate_bindings(manifest_dir: &Path, prefix: &str, bindings_path: &PathBuf)
 }
 
 #[cfg(feature = "bindgen")]
-fn generate_src_bindings(manifest_dir: &Path, prefix: &str, src_bindings_path: &Path) {
+fn generate_src_bindings(manifest_dir: &Path, prefix: Option<String>, src_bindings_path: &Path) {
     bindgen::generate_bindings(
         manifest_dir,
         &bindgen::BindingOptions {
-            build_prefix: prefix,
+            build_prefix: prefix.clone(),
             include_ssl: false,
             ..Default::default()
         },
@@ -246,7 +242,8 @@ fn get_builder(prefix: &Option<String>, manifest_dir: &Path, out_dir: &Path) -> 
         builder
     } else {
         let cc_builder = cc_builder_builder();
-        if cc_builder.check_dependencies().is_ok() {
+        // cc_builder not used for no-prefix builds
+        if prefix.is_some() && cc_builder.check_dependencies().is_ok() {
             cc_builder
         } else {
             let cmake_builder = cmake_builder_builder();
@@ -275,11 +272,12 @@ trait Builder {
 }
 
 fn main() {
-    let mut is_bindgen_required = cfg!(feature = "bindgen");
-
-    let is_internal_generate = env::var("AWS_LC_RUST_INTERNAL_BINDGEN")
-        .unwrap_or_else(|_| String::from("0"))
-        .eq("1");
+    let is_internal_no_prefix =
+        env_var_to_bool("AWS_LC_SYS_INTERNAL_NO_PREFIX").unwrap_or_else(|| false);
+    let is_internal_generate =
+        env_var_to_bool("AWS_LC_RUST_INTERNAL_BINDGEN").unwrap_or_else(|| false);
+    let mut is_bindgen_required =
+        is_internal_no_prefix || is_internal_generate || cfg!(feature = "bindgen");
 
     let pregenerated = !is_bindgen_required || is_internal_generate;
 
@@ -287,18 +285,23 @@ fn main() {
     cfg_bindgen_platform!(linux_x86_64, "linux", "x86_64", "gnu", pregenerated);
     cfg_bindgen_platform!(linux_aarch64, "linux", "aarch64", "gnu", pregenerated);
     cfg_bindgen_platform!(macos_x86_64, "macos", "x86_64", "", pregenerated);
+    cfg_bindgen_platform!(macos_aarch64, "macos", "aarch64", "", pregenerated);
 
-    if !(linux_x86 || linux_x86_64 || linux_aarch64 || macos_x86_64) {
-        emit_rustc_cfg("use_bindgen_generated");
+    if !(linux_x86 || linux_x86_64 || linux_aarch64 || macos_x86_64 || macos_aarch64) {
         is_bindgen_required = true;
     }
 
     let manifest_dir = env::current_dir().unwrap();
     let manifest_dir = dunce::canonicalize(Path::new(&manifest_dir)).unwrap();
-    let prefix = prefix_string();
+    let prefix_str = prefix_string();
+    let prefix = if is_internal_no_prefix {
+        None
+    } else {
+        Some(prefix_str)
+    };
     let out_dir_str = env::var("OUT_DIR").unwrap();
     let out_dir = Path::new(out_dir_str.as_str()).to_path_buf();
-    let builder = get_builder(&Some(prefix.clone()), &manifest_dir, &out_dir);
+    let builder = get_builder(&prefix, &manifest_dir, &out_dir);
 
     #[allow(unused_assignments)]
     let mut bindings_available = false;
@@ -306,22 +309,21 @@ fn main() {
         #[cfg(feature = "bindgen")]
         {
             let src_bindings_path = Path::new(&manifest_dir).join("src");
-            generate_src_bindings(&manifest_dir, &prefix, &src_bindings_path);
+            generate_src_bindings(&manifest_dir, prefix, &src_bindings_path);
             bindings_available = true;
         }
     } else if is_bindgen_required {
         #[cfg(any(
             feature = "bindgen",
-            not(any(
-                all(target_os = "macos", target_arch = "x86_64"),
-                all(target_os = "linux", target_arch = "x86"),
-                all(target_os = "linux", target_arch = "x86_64"),
-                all(target_os = "linux", target_arch = "aarch64")
-            ))
+            any(
+                not(any(target_os = "macos", target_os = "linux")),
+                not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "x86"))
+            )
         ))]
         {
             let gen_bindings_path = Path::new(&env::var("OUT_DIR").unwrap()).join("bindings.rs");
-            generate_bindings(&manifest_dir, &prefix, &gen_bindings_path);
+            generate_bindings(&manifest_dir, prefix, &gen_bindings_path);
+            emit_rustc_cfg("use_bindgen_generated");
             bindings_available = true;
         }
     } else {
@@ -365,7 +367,7 @@ fn setup_include_paths(out_dir: &Path, manifest_dir: &Path) -> PathBuf {
     let include_dir = out_dir.join("include");
     std::fs::create_dir_all(&include_dir).unwrap();
 
-    // iterate over all of the include paths and copy them into the final output
+    // iterate over all the include paths and copy them into the final output
     for path in include_paths {
         for child in std::fs::read_dir(path).into_iter().flatten().flatten() {
             if child.file_type().map_or(false, |t| t.is_file()) {
