@@ -95,6 +95,7 @@ impl Default for OutputLibType {
             }
         } else if target_os() == "linux"
             && (target_arch() == "x86_64" || target_arch() == "aarch64")
+            && target_features().split(',').any(|x| x == "crt-static")
         {
             OutputLibType::Static
         } else {
@@ -238,6 +239,10 @@ fn target_vendor() -> String {
 #[allow(unused)]
 fn target() -> String {
     cargo_env("TARGET")
+}
+
+fn target_features() -> String {
+    cargo_env("CARGO_CFG_TARGET_FEATURE")
 }
 
 fn out_dir() -> PathBuf {
