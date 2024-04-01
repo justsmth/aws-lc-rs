@@ -7,6 +7,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use cc_builder::CcBuilder;
 use cmake_builder::CmakeBuilder;
 
 #[cfg(any(
@@ -22,6 +23,7 @@ use cmake_builder::CmakeBuilder;
     ))
 ))]
 mod bindgen;
+mod cc_builder;
 mod cmake_builder;
 
 pub(crate) fn get_aws_lc_include_path(manifest_dir: &Path) -> PathBuf {
@@ -239,6 +241,45 @@ fn current_dir() -> PathBuf {
     std::env::current_dir().unwrap()
 }
 
+fn get_builder(prefix: &Option<String>, manifest_dir: &Path, out_dir: &Path) -> Box<dyn Builder> {
+    let cmake_builder_builder = || {
+        Box::new(CmakeBuilder::new(
+            manifest_dir.to_path_buf(),
+            out_dir.to_path_buf(),
+            prefix.clone(),
+            OutputLibType::default(),
+        ))
+    };
+
+    let cc_builder_builder = || {
+        Box::new(CcBuilder::new(
+            manifest_dir.to_path_buf(),
+            out_dir.to_path_buf(),
+            prefix.clone(),
+            OutputLibType::default(),
+        ))
+    };
+
+    if let Some(val) = env_var_to_bool("AWS_LC_SYS_CMAKE_BUILDER") {
+        let builder: Box<dyn Builder> = if val {
+            cmake_builder_builder()
+        } else {
+            cc_builder_builder()
+        };
+        builder.check_dependencies().unwrap();
+        builder
+    } else {
+        let cc_builder = cc_builder_builder();
+        if cc_builder.check_dependencies().is_ok() {
+            cc_builder
+        } else {
+            let cmake_builder = cmake_builder_builder();
+            cmake_builder.check_dependencies().unwrap();
+            cmake_builder
+        }
+    }
+}
+
 macro_rules! cfg_bindgen_platform {
     ($binding:ident, $target:literal, $additional:expr) => {
         let $binding = {
@@ -306,6 +347,7 @@ fn main() {
     }
 
     let manifest_dir = current_dir();
+    let out_dir = out_dir();
     let manifest_dir = dunce::canonicalize(Path::new(&manifest_dir)).unwrap();
     let prefix_str = prefix_string();
     let prefix = if is_internal_no_prefix {
@@ -314,12 +356,7 @@ fn main() {
         Some(prefix_str)
     };
 
-    let builder = CmakeBuilder::new(
-        manifest_dir.clone(),
-        out_dir(),
-        prefix.clone(),
-        OutputLibType::default(),
-    );
+    let builder = get_builder(&prefix, &manifest_dir, &out_dir);
 
     builder.check_dependencies().unwrap();
 
@@ -346,7 +383,7 @@ fn main() {
             ))
         ))]
         {
-            let gen_bindings_path = out_dir().join("bindings.rs");
+            let gen_bindings_path = out_dir.join("bindings.rs");
             generate_bindings(&manifest_dir, prefix, &gen_bindings_path);
             emit_rustc_cfg("use_bindgen_generated");
             bindings_available = true;
@@ -364,7 +401,7 @@ fn main() {
 
     println!(
         "cargo:include={}",
-        setup_include_paths(&out_dir(), &manifest_dir).display()
+        setup_include_paths(&out_dir, &manifest_dir).display()
     );
 
     // export the artifact names
