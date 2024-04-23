@@ -139,6 +139,16 @@ impl CmakeBuilder {
             cmake_cfg.generator("Ninja");
         }
 
+        if target_os() == "windows" && target_arch() == "aarch64" && target_env() == "msvc" {
+            cmake_cfg.generator("Ninja");
+            cmake_cfg.define("CMAKE_C_COMPILER", "clang-cl");
+            cmake_cfg.define("CMAKE_CXX_COMPILER", "clang-cl");
+            cmake_cfg.define("CMAKE_ASM_COMPILER", "clang-cl");
+            cmake_cfg.define("CMAKE_C_COMPILER_TARGET", "arm64-pc-windows-msvc");
+            cmake_cfg.define("CMAKE_CXX_COMPILER_TARGET", "arm64-pc-windows-msvc");
+            cmake_cfg.define("CMAKE_ASM_COMPILER_TARGET", "arm64-pc-windows-msvc");
+        }
+
         if cfg!(feature = "asan") {
             env::set_var("CC", "clang");
             env::set_var("CXX", "clang++");
@@ -175,6 +185,16 @@ impl crate::Builder for CmakeBuilder {
             eprintln!("Missing dependency: cmake");
             missing_dependency = true;
         };
+        if target_os() == "windows" {
+            if target_arch() == "x86_64" && !test_nasm_command() {
+                eprintln!("Missing dependency: nasm");
+                missing_dependency = true;
+            }
+            if target_arch() == "aarch64" && target_env() == "msvc" && !test_ninja_command() {
+                eprintln!("Missing dependency: ninja");
+                missing_dependency = true;
+            }
+        }
 
         if missing_dependency {
             return Err("Required build dependency is missing. Halting build.".to_owned());
