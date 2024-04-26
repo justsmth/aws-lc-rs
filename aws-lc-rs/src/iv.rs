@@ -72,11 +72,9 @@ impl<const L: usize> TryFrom<&[u8]> for FixedLength<L> {
     }
 }
 
-impl<const L: usize> TryFrom<FixedLength<L>> for [u8; L] {
-    type Error = Unspecified;
-
-    fn try_from(value: FixedLength<L>) -> Result<Self, Self::Error> {
-        Ok(value.0)
+impl<const L: usize> From<FixedLength<L>> for [u8; L] {
+    fn from(value: FixedLength<L>) -> Self {
+        value.0
     }
 }
 
