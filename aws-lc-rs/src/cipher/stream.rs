@@ -92,7 +92,7 @@ impl StreamingEncryptingKey {
         self.algorithm
     }
 
-    pub fn update<'a>(&self, input: &[u8], output: &'a mut [u8]) -> Result<usize, Unspecified> {
+    pub fn update<'a>(&self, input: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Unspecified> {
         if output.len() < (input.len() + self.algorithm.block_len) {
             return Err(Unspecified);
         }
@@ -111,10 +111,10 @@ impl StreamingEncryptingKey {
             return Err(Unspecified);
         }
         let outlen: usize = outlen.try_into()?;
-        Ok(outlen)
+        Ok(&output[0..outlen])
     }
 
-    pub fn finish(self, output: &mut [u8]) -> Result<(DecryptionContext, usize), Unspecified> {
+    pub fn finish(self, output: &mut [u8]) -> Result<(DecryptionContext, &[u8]), Unspecified> {
         if output.len() < self.algorithm.block_len {
             return Err(Unspecified);
         }
@@ -123,7 +123,7 @@ impl StreamingEncryptingKey {
             return Err(Unspecified);
         }
         let outlen: usize = outlen.try_into()?;
-        Ok((self.context.into(), outlen))
+        Ok((self.context.into(), &output[0..outlen]))
     }
 }
 
@@ -193,7 +193,7 @@ impl StreamingDecryptingKey {
         self.mode
     }
 
-    pub fn update(&self, input: &[u8], output: &mut [u8]) -> Result<usize, Unspecified> {
+    pub fn update<'a>(&self, input: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Unspecified> {
         if output.len() < (input.len() + self.algorithm.block_len) {
             return Err(Unspecified);
         }
@@ -212,15 +212,16 @@ impl StreamingDecryptingKey {
             return Err(Unspecified);
         }
         let outlen: usize = outlen.try_into()?;
-        Ok(outlen)
+        Ok(&output[0..outlen])
     }
 
-    pub fn finish(self, output: &mut [u8]) -> Result<usize, Unspecified> {
+    pub fn finish(self, output: &mut [u8]) -> Result<&[u8], Unspecified> {
         let mut outlen: i32 = output.len().try_into()?;
         if 1 != unsafe { EVP_DecryptFinal_ex(*self.cipher_ctx, output.as_mut_ptr(), &mut outlen) } {
             return Err(Unspecified);
         }
-        Ok(outlen.try_into()?)
+        let outlen: usize = outlen.try_into()?;
+        Ok(&output[0..outlen])
     }
 }
 
@@ -249,22 +250,23 @@ mod tests {
                 in_end = n;
             }
             let out_end = out_idx + (in_end - in_idx) + alg.block_len();
-            let outlen = encrypting_key
+            let output = encrypting_key
                 .update(
                     &plaintext[in_idx..in_end],
                     &mut ciphertext[out_idx..out_end],
                 )
                 .unwrap();
             in_idx += step;
-            out_idx += outlen;
+            out_idx += output.len();
             if in_idx >= n {
                 break;
             }
         }
         let out_end = out_idx + alg.block_len();
-        let (decrypt_iv, outlen) = encrypting_key
+        let (decrypt_iv, output) = encrypting_key
             .finish(&mut ciphertext[out_idx..out_end])
             .unwrap();
+        let outlen = output.len();
 
         ciphertext.truncate(out_idx + outlen);
         (ciphertext.into_boxed_slice(), decrypt_iv)
@@ -277,7 +279,7 @@ mod tests {
     ) -> Box<[u8]> {
         let alg = decrypting_key.algorithm();
         let n = ciphertext.len();
-        let mut output = vec![0u8; n + alg.block_len()];
+        let mut plaintext = vec![0u8; n + alg.block_len()];
 
         let mut in_idx: usize = 0;
         let mut out_idx: usize = 0;
@@ -287,23 +289,27 @@ mod tests {
                 in_end = n;
             }
             let out_end = out_idx + (in_end - in_idx) + alg.block_len();
-            let outlen = decrypting_key
-                .update(&ciphertext[in_idx..in_end], &mut output[out_idx..out_end])
+            let output = decrypting_key
+                .update(
+                    &ciphertext[in_idx..in_end],
+                    &mut plaintext[out_idx..out_end],
+                )
                 .unwrap();
             in_idx += step;
-            out_idx += outlen;
+            out_idx += output.len();
             if in_idx >= n {
                 break;
             }
         }
         let out_end = out_idx + alg.block_len();
-        let outlen = decrypting_key
-            .finish(&mut output[out_idx..out_end])
+        let output = decrypting_key
+            .finish(&mut plaintext[out_idx..out_end])
             .unwrap();
+        let outlen = output.len();
 
-        output.truncate(out_idx + outlen);
+        plaintext.truncate(out_idx + outlen);
 
-        output.into_boxed_slice()
+        plaintext.into_boxed_slice()
     }
 
     macro_rules! helper_stream_step_encrypt_test {
