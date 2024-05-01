@@ -228,7 +228,9 @@ impl StreamingDecryptingKey {
 #[cfg(test)]
 mod tests {
     use crate::cipher::stream::{StreamingDecryptingKey, StreamingEncryptingKey};
-    use crate::cipher::{Algorithm, DecryptionContext, UnboundCipherKey, AES_256, AES_256_KEY_LEN};
+    use crate::cipher::{
+        Algorithm, DecryptionContext, OperatingMode, UnboundCipherKey, AES_256, AES_256_KEY_LEN,
+    };
     use crate::rand::{SecureRandom, SystemRandom};
     use paste::*;
 
@@ -267,8 +269,17 @@ mod tests {
             .finish(&mut ciphertext[out_idx..out_end])
             .unwrap();
         let outlen = output.len();
-
         ciphertext.truncate(out_idx + outlen);
+        match mode {
+            OperatingMode::CBC => {
+                assert!(ciphertext.len() > plaintext.len());
+                assert!(ciphertext.len() <= plaintext.len() + alg.block_len());
+            }
+            OperatingMode::CTR => {
+                assert_eq!(ciphertext.len(), plaintext.len());
+            }
+        }
+
         (ciphertext.into_boxed_slice(), decrypt_iv)
     }
 
@@ -278,6 +289,7 @@ mod tests {
         step: usize,
     ) -> Box<[u8]> {
         let alg = decrypting_key.algorithm();
+        let mode = decrypting_key.mode();
         let n = ciphertext.len();
         let mut plaintext = vec![0u8; n + alg.block_len()];
 
@@ -306,9 +318,16 @@ mod tests {
             .finish(&mut plaintext[out_idx..out_end])
             .unwrap();
         let outlen = output.len();
-
         plaintext.truncate(out_idx + outlen);
-
+        match mode {
+            OperatingMode::CBC => {
+                assert!(ciphertext.len() > plaintext.len());
+                assert!(ciphertext.len() <= plaintext.len() + alg.block_len());
+            }
+            OperatingMode::CTR => {
+                assert_eq!(ciphertext.len(), plaintext.len());
+            }
+        }
         plaintext.into_boxed_slice()
     }
 
@@ -358,6 +377,11 @@ mod tests {
                 let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, j - i);
             }
         }
+        for j in 124..=131 {
+            let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, j);
+            let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, 256);
+            let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, 1);
+        }
     }
 
     #[test]
@@ -372,6 +396,11 @@ mod tests {
             for j in 124..=131 {
                 let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, j - i);
             }
+        }
+        for j in 124..=131 {
+            let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, j);
+            let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, 256);
+            let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, 1);
         }
     }
 }
