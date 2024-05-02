@@ -1,8 +1,12 @@
+pub(crate) mod padded;
+pub(crate) mod unpadded;
+
 use crate::cipher::{
     Algorithm, DecryptionContext, EncryptionContext, OperatingMode, UnboundCipherKey,
 };
 use crate::error::Unspecified;
 use crate::ptr::{LcPtr, Pointer};
+use crate::sealed::Sealed;
 use aws_lc::{
     EVP_CIPHER_CTX_new, EVP_CIPHER_iv_length, EVP_CIPHER_key_length, EVP_DecryptFinal_ex,
     EVP_DecryptInit_ex, EVP_DecryptUpdate, EVP_EncryptFinal_ex, EVP_EncryptInit_ex,
@@ -17,7 +21,7 @@ struct EncryptingKey {
     context: EncryptionContext,
 }
 
-trait EncryptingKeyWrapper: Sized {
+trait SealedEncryptingKey: Sized + Sealed {
     fn wrap(ek: EncryptingKey) -> Self;
     fn unwrap(&self) -> &EncryptingKey;
 
@@ -63,7 +67,8 @@ trait EncryptingKeyWrapper: Sized {
     }
 }
 
-pub trait StreamingEncryptingKey: EncryptingKeyWrapper {
+#[allow(private_bounds)]
+pub trait StreamingEncryptingKey: SealedEncryptingKey {
     /// Returns the cipher operating mode.
     #[must_use]
     fn mode(&self) -> OperatingMode {
@@ -118,7 +123,7 @@ struct DecryptingKey {
     mode: OperatingMode,
     cipher_ctx: LcPtr<EVP_CIPHER_CTX>,
 }
-trait DecryptingKeyWrapper: Sized {
+trait SealedDecryptingKey: Sized + Sealed {
     fn wrap(dk: DecryptingKey) -> Self;
     fn unwrap(&self) -> &DecryptingKey;
 
@@ -161,7 +166,8 @@ trait DecryptingKeyWrapper: Sized {
     }
 }
 
-pub trait StreamingDecryptingKey: DecryptingKeyWrapper {
+#[allow(private_bounds)]
+pub trait StreamingDecryptingKey: SealedDecryptingKey {
     fn update<'a>(&self, input: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Unspecified> {
         if output.len() < (input.len() + self.unwrap().algorithm.block_len) {
             return Err(Unspecified);
@@ -204,117 +210,12 @@ pub trait StreamingDecryptingKey: DecryptingKeyWrapper {
     }
 }
 
-pub struct StreamingPaddedBlockEncryptingKey(EncryptingKey);
-impl EncryptingKeyWrapper for StreamingPaddedBlockEncryptingKey {
-    fn wrap(ek: EncryptingKey) -> Self {
-        Self(ek)
-    }
-
-    fn unwrap(&self) -> &EncryptingKey {
-        &self.0
-    }
-
-    fn consume(self) -> EncryptingKey {
-        self.0
-    }
-}
-impl StreamingEncryptingKey for StreamingPaddedBlockEncryptingKey {}
-
-impl StreamingPaddedBlockEncryptingKey {
-    fn cbc_pkcs7(key: UnboundCipherKey) -> Result<Self, Unspecified> {
-        let context = key.algorithm().new_encryption_context(OperatingMode::CBC)?;
-        Self::less_safe_cbc_pkcs7(key, context)
-    }
-
-    fn less_safe_cbc_pkcs7(
-        key: UnboundCipherKey,
-        context: EncryptionContext,
-    ) -> Result<Self, Unspecified> {
-        Self::new(key, OperatingMode::CBC, context)
-    }
-}
-
-//
-pub struct StreamingUnpaddedEncryptingKey(EncryptingKey);
-impl EncryptingKeyWrapper for StreamingUnpaddedEncryptingKey {
-    fn wrap(ek: EncryptingKey) -> Self {
-        Self(ek)
-    }
-
-    fn unwrap(&self) -> &EncryptingKey {
-        &self.0
-    }
-
-    fn consume(self) -> EncryptingKey {
-        self.0
-    }
-}
-
-impl StreamingUnpaddedEncryptingKey {
-    fn ctr(key: UnboundCipherKey) -> Result<Self, Unspecified> {
-        let context = key.algorithm().new_encryption_context(OperatingMode::CTR)?;
-        Self::less_safe_ctr(key, context)
-    }
-
-    fn less_safe_ctr(
-        key: UnboundCipherKey,
-        context: EncryptionContext,
-    ) -> Result<Self, Unspecified> {
-        Self::new(key, OperatingMode::CTR, context)
-    }
-}
-
-pub struct StreamingPaddedBlockDecryptingKey(DecryptingKey);
-impl DecryptingKeyWrapper for StreamingPaddedBlockDecryptingKey {
-    fn wrap(dk: DecryptingKey) -> Self {
-        Self(dk)
-    }
-
-    fn unwrap(&self) -> &DecryptingKey {
-        &self.0
-    }
-}
-impl StreamingDecryptingKey for StreamingPaddedBlockDecryptingKey {}
-impl StreamingPaddedBlockDecryptingKey {
-    pub fn cbc_pkcs7(
-        key: UnboundCipherKey,
-        context: DecryptionContext,
-    ) -> Result<Self, Unspecified> {
-        Self::new(key, OperatingMode::CBC, context)
-    }
-}
-
-pub struct StreamingUnpaddedDecryptingKey(DecryptingKey);
-impl DecryptingKeyWrapper for StreamingUnpaddedDecryptingKey {
-    fn wrap(dk: DecryptingKey) -> Self {
-        Self(dk)
-    }
-
-    fn unwrap(&self) -> &DecryptingKey {
-        &self.0
-    }
-}
-impl StreamingDecryptingKey for StreamingUnpaddedDecryptingKey {}
-impl StreamingUnpaddedDecryptingKey {
-    pub fn ctr(key: UnboundCipherKey, context: DecryptionContext) -> Result<Self, Unspecified> {
-        Self::new(key, OperatingMode::CTR, context)
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use crate::cipher::stream::{
-        StreamingDecryptingKey, StreamingEncryptingKey, StreamingPaddedBlockDecryptingKey,
-        StreamingPaddedBlockEncryptingKey, StreamingUnpaddedDecryptingKey,
-        StreamingUnpaddedEncryptingKey,
-    };
-    use crate::cipher::{
-        Algorithm, DecryptionContext, OperatingMode, UnboundCipherKey, AES_256, AES_256_KEY_LEN,
-    };
-    use crate::rand::{SecureRandom, SystemRandom};
-    use paste::*;
+pub(super) mod tests {
+    use crate::cipher::{DecryptionContext, OperatingMode};
+    use crate::cipher::{StreamingDecryptingKey, StreamingEncryptingKey};
 
-    fn step_encrypt<E: StreamingEncryptingKey>(
+    pub(super) fn step_encrypt<E: StreamingEncryptingKey>(
         encrypting_key: E,
         plaintext: &[u8],
         step: usize,
@@ -363,7 +264,7 @@ mod tests {
         (ciphertext.into_boxed_slice(), decrypt_iv)
     }
 
-    fn step_decrypt<D: StreamingDecryptingKey>(
+    pub(super) fn step_decrypt<D: StreamingDecryptingKey>(
         decrypting_key: D,
         ciphertext: &[u8],
         step: usize,
@@ -411,10 +312,14 @@ mod tests {
         plaintext.into_boxed_slice()
     }
 
-    macro_rules! helper_stream_step_encrypt_test {
+    macro_rules! helper_stream_step_encrypt_step_decrypt_test {
         ($encstr:ident, $decstr:ident, $mode:ident) => {
+            use crate::cipher::streaming::tests::{step_decrypt, step_encrypt};
+            use crate::cipher::{Algorithm, UnboundCipherKey};
+            use crate::rand::{SecureRandom, SystemRandom};
+            use paste::paste;
             paste! {
-                fn [<helper_test_ $mode _stream_encrypt_step_n_bytes>](
+                fn [<helper_ $mode _stream_step_encrypt_step_descrypt>](
                     key: &[u8],
                     alg: &'static Algorithm,
                     n: usize,
@@ -440,55 +345,5 @@ mod tests {
         };
     }
 
-    helper_stream_step_encrypt_test!(
-        StreamingPaddedBlockEncryptingKey,
-        StreamingPaddedBlockDecryptingKey,
-        cbc_pkcs7
-    );
-    helper_stream_step_encrypt_test!(
-        StreamingUnpaddedEncryptingKey,
-        StreamingUnpaddedDecryptingKey,
-        ctr
-    );
-
-    #[test]
-    fn test_step_cbc() {
-        let random = SystemRandom::new();
-        let mut key = [0u8; AES_256_KEY_LEN];
-        random.fill(&mut key).unwrap();
-
-        for i in 13..=21 {
-            for j in 124..=131 {
-                let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, i);
-            }
-            for j in 124..=131 {
-                let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, j - i);
-            }
-        }
-        for j in 124..=131 {
-            let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, j);
-            let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, 256);
-            let _ = helper_test_cbc_pkcs7_stream_encrypt_step_n_bytes(&key, &AES_256, j, 1);
-        }
-    }
-
-    #[test]
-    fn test_step_ctr() {
-        let random = SystemRandom::new();
-        let mut key = [0u8; AES_256_KEY_LEN];
-        random.fill(&mut key).unwrap();
-        for i in 13..=21 {
-            for j in 124..=131 {
-                let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, i);
-            }
-            for j in 124..=131 {
-                let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, j - i);
-            }
-        }
-        for j in 124..=131 {
-            let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, j);
-            let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, 256);
-            let _ = helper_test_ctr_stream_encrypt_step_n_bytes(&key, &AES_256, j, 1);
-        }
-    }
+    pub(super) use helper_stream_step_encrypt_step_decrypt_test;
 }

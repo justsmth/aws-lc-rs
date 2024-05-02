@@ -142,9 +142,14 @@ pub(crate) mod block;
 pub(crate) mod chacha;
 pub(crate) mod key;
 mod padded;
-mod stream;
+mod streaming;
 
 pub use padded::{PaddedBlockDecryptingKey, PaddedBlockEncryptingKey};
+pub use streaming::{
+    padded::StreamingPaddedBlockDecryptingKey, padded::StreamingPaddedBlockEncryptingKey,
+    unpadded::StreamingUnpaddedDecryptingKey, unpadded::StreamingUnpaddedEncryptingKey,
+    StreamingDecryptingKey, StreamingEncryptingKey,
+};
 
 use crate::buffer::Buffer;
 use crate::error::Unspecified;
