@@ -10,14 +10,19 @@ use aws_lc::{
 };
 use std::ptr::null_mut;
 
-pub struct StreamingEncryptingKey {
+struct EncryptingKey {
     algorithm: &'static Algorithm,
     mode: OperatingMode,
     cipher_ctx: LcPtr<EVP_CIPHER_CTX>,
     context: EncryptionContext,
 }
 
-impl StreamingEncryptingKey {
+trait EncryptingKeyWrapper: Sized {
+    fn wrap(ek: EncryptingKey) -> Self;
+    fn unwrap(&self) -> &EncryptingKey;
+
+    fn consume(self) -> EncryptingKey;
+
     fn new(
         key: UnboundCipherKey,
         mode: OperatingMode,
@@ -49,51 +54,29 @@ impl StreamingEncryptingKey {
             return Err(Unspecified);
         }
 
-        Ok(StreamingEncryptingKey {
+        Ok(Self::wrap(EncryptingKey {
             algorithm,
             mode,
             cipher_ctx,
             context,
-        })
+        }))
     }
+}
 
-    pub fn cbc_pkcs7(key: UnboundCipherKey) -> Result<Self, Unspecified> {
-        let context = key.algorithm().new_encryption_context(OperatingMode::CBC)?;
-        Self::less_safe_cbc_pkcs7(key, context)
-    }
-
-    pub fn less_safe_cbc_pkcs7(
-        key: UnboundCipherKey,
-        context: EncryptionContext,
-    ) -> Result<Self, Unspecified> {
-        StreamingEncryptingKey::new(key, OperatingMode::CBC, context)
-    }
-
-    pub fn ctr(key: UnboundCipherKey) -> Result<Self, Unspecified> {
-        let context = key.algorithm().new_encryption_context(OperatingMode::CTR)?;
-        Self::less_safe_ctr(key, context)
-    }
-
-    pub fn less_safe_ctr(
-        key: UnboundCipherKey,
-        context: EncryptionContext,
-    ) -> Result<Self, Unspecified> {
-        StreamingEncryptingKey::new(key, OperatingMode::CTR, context)
-    }
-
+pub trait StreamingEncryptingKey: EncryptingKeyWrapper {
     /// Returns the cipher operating mode.
     #[must_use]
-    pub fn mode(&self) -> OperatingMode {
-        self.mode
+    fn mode(&self) -> OperatingMode {
+        self.unwrap().mode
     }
 
     #[must_use]
-    pub fn algorithm(&self) -> &'static Algorithm {
-        self.algorithm
+    fn algorithm(&self) -> &'static Algorithm {
+        self.unwrap().algorithm
     }
 
-    pub fn update<'a>(&self, input: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Unspecified> {
-        if output.len() < (input.len() + self.algorithm.block_len) {
+    fn update<'a>(&self, input: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Unspecified> {
+        if output.len() < (input.len() + self.unwrap().algorithm.block_len) {
             return Err(Unspecified);
         }
 
@@ -101,7 +84,7 @@ impl StreamingEncryptingKey {
         let inlen: i32 = input.len().try_into()?;
         if 1 != unsafe {
             EVP_EncryptUpdate(
-                *self.cipher_ctx,
+                *self.unwrap().cipher_ctx,
                 output.as_mut_ptr(),
                 &mut outlen,
                 input.as_ptr(),
@@ -114,25 +97,31 @@ impl StreamingEncryptingKey {
         Ok(&output[0..outlen])
     }
 
-    pub fn finish(self, output: &mut [u8]) -> Result<(DecryptionContext, &[u8]), Unspecified> {
-        if output.len() < self.algorithm.block_len {
+    fn finish(self, output: &mut [u8]) -> Result<(DecryptionContext, &[u8]), Unspecified> {
+        if output.len() < self.unwrap().algorithm.block_len {
             return Err(Unspecified);
         }
         let mut outlen: i32 = output.len().try_into()?;
-        if 1 != unsafe { EVP_EncryptFinal_ex(*self.cipher_ctx, output.as_mut_ptr(), &mut outlen) } {
+        if 1 != unsafe {
+            EVP_EncryptFinal_ex(*self.unwrap().cipher_ctx, output.as_mut_ptr(), &mut outlen)
+        } {
             return Err(Unspecified);
         }
         let outlen: usize = outlen.try_into()?;
-        Ok((self.context.into(), &output[0..outlen]))
+        let context = self.consume().context;
+        Ok((context.into(), &output[0..outlen]))
     }
 }
 
-pub struct StreamingDecryptingKey {
+struct DecryptingKey {
     algorithm: &'static Algorithm,
     mode: OperatingMode,
     cipher_ctx: LcPtr<EVP_CIPHER_CTX>,
 }
-impl StreamingDecryptingKey {
+trait DecryptingKeyWrapper: Sized {
+    fn wrap(dk: DecryptingKey) -> Self;
+    fn unwrap(&self) -> &DecryptingKey;
+
     fn new(
         key: UnboundCipherKey,
         mode: OperatingMode,
@@ -164,37 +153,17 @@ impl StreamingDecryptingKey {
             return Err(Unspecified);
         }
 
-        Ok(StreamingDecryptingKey {
+        Ok(Self::wrap(DecryptingKey {
             algorithm,
             mode,
             cipher_ctx,
-        })
+        }))
     }
+}
 
-    pub fn cbc_pkcs7(
-        key: UnboundCipherKey,
-        context: DecryptionContext,
-    ) -> Result<Self, Unspecified> {
-        StreamingDecryptingKey::new(key, OperatingMode::CBC, context)
-    }
-
-    pub fn ctr(key: UnboundCipherKey, context: DecryptionContext) -> Result<Self, Unspecified> {
-        StreamingDecryptingKey::new(key, OperatingMode::CTR, context)
-    }
-
-    #[must_use]
-    pub fn algorithm(&self) -> &'static Algorithm {
-        self.algorithm
-    }
-
-    /// Returns the cipher operating mode.
-    #[must_use]
-    pub fn mode(&self) -> OperatingMode {
-        self.mode
-    }
-
-    pub fn update<'a>(&self, input: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Unspecified> {
-        if output.len() < (input.len() + self.algorithm.block_len) {
+pub trait StreamingDecryptingKey: DecryptingKeyWrapper {
+    fn update<'a>(&self, input: &[u8], output: &'a mut [u8]) -> Result<&'a [u8], Unspecified> {
+        if output.len() < (input.len() + self.unwrap().algorithm.block_len) {
             return Err(Unspecified);
         }
 
@@ -202,7 +171,7 @@ impl StreamingDecryptingKey {
         let inlen: i32 = input.len().try_into()?;
         if 1 != unsafe {
             EVP_DecryptUpdate(
-                *self.cipher_ctx,
+                *self.unwrap().cipher_ctx,
                 output.as_mut_ptr(),
                 &mut outlen,
                 input.as_ptr(),
@@ -215,27 +184,138 @@ impl StreamingDecryptingKey {
         Ok(&output[0..outlen])
     }
 
-    pub fn finish(self, output: &mut [u8]) -> Result<&[u8], Unspecified> {
+    fn finish(self, output: &mut [u8]) -> Result<&[u8], Unspecified> {
         let mut outlen: i32 = output.len().try_into()?;
-        if 1 != unsafe { EVP_DecryptFinal_ex(*self.cipher_ctx, output.as_mut_ptr(), &mut outlen) } {
+        if 1 != unsafe {
+            EVP_DecryptFinal_ex(*self.unwrap().cipher_ctx, output.as_mut_ptr(), &mut outlen)
+        } {
             return Err(Unspecified);
         }
         let outlen: usize = outlen.try_into()?;
         Ok(&output[0..outlen])
     }
+
+    fn algorithm(&self) -> &'static Algorithm {
+        self.unwrap().algorithm
+    }
+
+    fn mode(&self) -> OperatingMode {
+        self.unwrap().mode
+    }
+}
+
+pub struct StreamingPaddedBlockEncryptingKey(EncryptingKey);
+impl EncryptingKeyWrapper for StreamingPaddedBlockEncryptingKey {
+    fn wrap(ek: EncryptingKey) -> Self {
+        Self(ek)
+    }
+
+    fn unwrap(&self) -> &EncryptingKey {
+        &self.0
+    }
+
+    fn consume(self) -> EncryptingKey {
+        self.0
+    }
+}
+impl StreamingEncryptingKey for StreamingPaddedBlockEncryptingKey {}
+
+impl StreamingPaddedBlockEncryptingKey {
+    fn cbc_pkcs7(key: UnboundCipherKey) -> Result<Self, Unspecified> {
+        let context = key.algorithm().new_encryption_context(OperatingMode::CBC)?;
+        Self::less_safe_cbc_pkcs7(key, context)
+    }
+
+    fn less_safe_cbc_pkcs7(
+        key: UnboundCipherKey,
+        context: EncryptionContext,
+    ) -> Result<Self, Unspecified> {
+        Self::new(key, OperatingMode::CBC, context)
+    }
+}
+
+//
+pub struct StreamingUnpaddedEncryptingKey(EncryptingKey);
+impl EncryptingKeyWrapper for StreamingUnpaddedEncryptingKey {
+    fn wrap(ek: EncryptingKey) -> Self {
+        Self(ek)
+    }
+
+    fn unwrap(&self) -> &EncryptingKey {
+        &self.0
+    }
+
+    fn consume(self) -> EncryptingKey {
+        self.0
+    }
+}
+
+impl StreamingUnpaddedEncryptingKey {
+    fn ctr(key: UnboundCipherKey) -> Result<Self, Unspecified> {
+        let context = key.algorithm().new_encryption_context(OperatingMode::CTR)?;
+        Self::less_safe_ctr(key, context)
+    }
+
+    fn less_safe_ctr(
+        key: UnboundCipherKey,
+        context: EncryptionContext,
+    ) -> Result<Self, Unspecified> {
+        Self::new(key, OperatingMode::CTR, context)
+    }
+}
+
+pub struct StreamingPaddedBlockDecryptingKey(DecryptingKey);
+impl DecryptingKeyWrapper for StreamingPaddedBlockDecryptingKey {
+    fn wrap(dk: DecryptingKey) -> Self {
+        Self(dk)
+    }
+
+    fn unwrap(&self) -> &DecryptingKey {
+        &self.0
+    }
+}
+impl StreamingDecryptingKey for StreamingPaddedBlockDecryptingKey {}
+impl StreamingPaddedBlockDecryptingKey {
+    pub fn cbc_pkcs7(
+        key: UnboundCipherKey,
+        context: DecryptionContext,
+    ) -> Result<Self, Unspecified> {
+        Self::new(key, OperatingMode::CBC, context)
+    }
+}
+
+pub struct StreamingUnpaddedDecryptingKey(DecryptingKey);
+impl DecryptingKeyWrapper for StreamingUnpaddedDecryptingKey {
+    fn wrap(dk: DecryptingKey) -> Self {
+        Self(dk)
+    }
+
+    fn unwrap(&self) -> &DecryptingKey {
+        &self.0
+    }
+}
+impl StreamingDecryptingKey for StreamingUnpaddedDecryptingKey {}
+impl StreamingUnpaddedDecryptingKey {
+    pub fn ctr(key: UnboundCipherKey, context: DecryptionContext) -> Result<Self, Unspecified> {
+        Self::new(key, OperatingMode::CTR, context)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::cipher::stream::{StreamingDecryptingKey, StreamingEncryptingKey};
+    use crate::cipher::stream::{
+        StreamingDecryptingKey, StreamingEncryptingKey, StreamingPaddedBlockDecryptingKey,
+        StreamingPaddedBlockEncryptingKey, StreamingUnpaddedDecryptingKey,
+        StreamingUnpaddedEncryptingKey,
+    };
     use crate::cipher::{
         Algorithm, DecryptionContext, OperatingMode, UnboundCipherKey, AES_256, AES_256_KEY_LEN,
     };
     use crate::rand::{SecureRandom, SystemRandom};
     use paste::*;
 
-    fn step_encrypt(
-        encrypting_key: StreamingEncryptingKey,
+    fn step_encrypt<E: StreamingEncryptingKey>(
+        encrypting_key: E,
         plaintext: &[u8],
         step: usize,
     ) -> (Box<[u8]>, DecryptionContext) {
@@ -283,8 +363,8 @@ mod tests {
         (ciphertext.into_boxed_slice(), decrypt_iv)
     }
 
-    fn step_decrypt(
-        decrypting_key: StreamingDecryptingKey,
+    fn step_decrypt<D: StreamingDecryptingKey>(
+        decrypting_key: D,
         ciphertext: &[u8],
         step: usize,
     ) -> Box<[u8]> {
@@ -332,7 +412,7 @@ mod tests {
     }
 
     macro_rules! helper_stream_step_encrypt_test {
-        ($mode:ident) => {
+        ($encstr:ident, $decstr:ident, $mode:ident) => {
             paste! {
                 fn [<helper_test_ $mode _stream_encrypt_step_n_bytes>](
                     key: &[u8],
@@ -345,12 +425,12 @@ mod tests {
                     random.fill(&mut input).unwrap();
 
                     let cipher_key = UnboundCipherKey::new(alg, key).unwrap();
-                    let encrypting_key = StreamingEncryptingKey::$mode(cipher_key).unwrap();
+                    let encrypting_key = $encstr::$mode(cipher_key).unwrap();
 
                     let (ciphertext, decrypt_iv) = step_encrypt(encrypting_key, &input, step);
 
                     let cipher_key2 = UnboundCipherKey::new(alg, key).unwrap();
-                    let decrypting_key = StreamingDecryptingKey::$mode(cipher_key2, decrypt_iv).unwrap();
+                    let decrypting_key = $decstr::$mode(cipher_key2, decrypt_iv).unwrap();
 
                     let plaintext = step_decrypt(decrypting_key, &ciphertext, step);
 
@@ -360,8 +440,16 @@ mod tests {
         };
     }
 
-    helper_stream_step_encrypt_test!(cbc_pkcs7);
-    helper_stream_step_encrypt_test!(ctr);
+    helper_stream_step_encrypt_test!(
+        StreamingPaddedBlockEncryptingKey,
+        StreamingPaddedBlockDecryptingKey,
+        cbc_pkcs7
+    );
+    helper_stream_step_encrypt_test!(
+        StreamingUnpaddedEncryptingKey,
+        StreamingUnpaddedDecryptingKey,
+        ctr
+    );
 
     #[test]
     fn test_step_cbc() {
