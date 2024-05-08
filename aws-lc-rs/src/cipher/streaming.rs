@@ -1,16 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0 OR ISC
+#![allow(missing_docs)]
+#![allow(clippy::missing_errors_doc)]
 
 use crate::cipher::{
-    Algorithm, DecryptionContext, EncryptionContext, OperatingMode, UnboundCipherKey,
+    Algorithm, CipherAad, DecryptionContext, EncryptionContext, OperatingMode, UnboundCipherKey,
 };
 use crate::error::Unspecified;
+use crate::iv::FixedLength;
 use crate::ptr::{LcPtr, Pointer};
 use aws_lc::{
-    EVP_CIPHER_CTX_new, EVP_CIPHER_iv_length, EVP_CIPHER_key_length, EVP_DecryptFinal_ex,
-    EVP_DecryptInit_ex, EVP_DecryptUpdate, EVP_EncryptFinal_ex, EVP_EncryptInit_ex,
-    EVP_EncryptUpdate, EVP_CIPHER_CTX,
+    EVP_CIPHER_CTX_ctrl, EVP_CIPHER_CTX_new, EVP_CIPHER_iv_length, EVP_CIPHER_key_length,
+    EVP_DecryptFinal_ex, EVP_DecryptInit_ex, EVP_DecryptUpdate, EVP_EncryptFinal_ex,
+    EVP_EncryptInit_ex, EVP_EncryptUpdate, EVP_CIPHER_CTX, EVP_CTRL_AEAD_GET_TAG,
+    EVP_CTRL_AEAD_SET_TAG,
 };
+use std::os::raw::c_int;
 use std::ptr::null_mut;
 
 /// A cipher encryption key for streaming encryption operations.
@@ -36,7 +41,7 @@ impl StreamingEncryptingKey {
             key_bytes.len(),
             <usize>::try_from(unsafe { EVP_CIPHER_key_length(*cipher) }).unwrap()
         );
-        let iv = <&[u8]>::try_from(&context)?;
+        let iv = context.iv();
         debug_assert_eq!(
             iv.len(),
             <usize>::try_from(unsafe { EVP_CIPHER_iv_length(*cipher) }).unwrap()
@@ -52,6 +57,21 @@ impl StreamingEncryptingKey {
             )
         } {
             return Err(Unspecified);
+        }
+
+        if let Some(aad) = context.aad() {
+            if 1 != unsafe {
+                let mut out_len: i32 = 0;
+                EVP_EncryptUpdate(
+                    cipher_ctx.as_mut_ptr(),
+                    null_mut(),
+                    &mut out_len,
+                    aad.as_ptr(),
+                    aad.len().try_into()?,
+                )
+            } {
+                return Err(Unspecified);
+            }
         }
 
         Ok(Self {
@@ -109,7 +129,24 @@ impl StreamingEncryptingKey {
             return Err(Unspecified);
         }
         let outlen: usize = outlen.try_into()?;
-        Ok((self.context.into(), &output[0..outlen]))
+
+        if let EncryptionContext::AEAD(aad, iv, _) = self.context {
+            let mut tag = [0u8; 16];
+            if 1 != unsafe {
+                EVP_CIPHER_CTX_ctrl(
+                    self.cipher_ctx.as_mut_ptr(),
+                    EVP_CTRL_AEAD_GET_TAG,
+                    16,
+                    tag.as_mut_ptr().cast(),
+                )
+            } {
+                return Err(Unspecified);
+            }
+            let decryption_ctx = DecryptionContext::AEAD(aad, iv, Some(tag.into()));
+            Ok((decryption_ctx, &output[0..outlen]))
+        } else {
+            Ok((self.context.into(), &output[0..outlen]))
+        }
     }
 
     /// Returns the cipher operating mode.
@@ -159,6 +196,21 @@ impl StreamingEncryptingKey {
     ) -> Result<Self, Unspecified> {
         Self::new(key, OperatingMode::CBC, context)
     }
+
+    pub fn gcm(key: UnboundCipherKey, aad: &[u8]) -> Result<Self, Unspecified> {
+        let context = EncryptionContext::AEAD(CipherAad::new(aad), FixedLength::new()?, None);
+        Self::less_safe_gcm(key, context)
+    }
+
+    /// GCM cipher mode
+    /// # Errors
+    /// If the key is not valid for the cipher algorithm
+    pub fn less_safe_gcm(
+        key: UnboundCipherKey,
+        context: EncryptionContext,
+    ) -> Result<Self, Unspecified> {
+        Self::new(key, OperatingMode::GCM, context)
+    }
 }
 
 /// A cipher decryption key for streaming encryption operations.
@@ -166,6 +218,7 @@ pub struct StreamingDecryptingKey {
     algorithm: &'static Algorithm,
     mode: OperatingMode,
     cipher_ctx: LcPtr<EVP_CIPHER_CTX>,
+    context: DecryptionContext,
 }
 impl StreamingDecryptingKey {
     #[allow(clippy::needless_pass_by_value)]
@@ -182,7 +235,7 @@ impl StreamingDecryptingKey {
             key_bytes.len(),
             <usize>::try_from(unsafe { EVP_CIPHER_key_length(*cipher) }).unwrap()
         );
-        let iv = <&[u8]>::try_from(&context)?;
+        let iv = context.iv();
         debug_assert_eq!(
             iv.len(),
             <usize>::try_from(unsafe { EVP_CIPHER_iv_length(*cipher) }).unwrap()
@@ -200,10 +253,26 @@ impl StreamingDecryptingKey {
             return Err(Unspecified);
         }
 
+        if let Some(aad) = context.aad() {
+            if 1 != unsafe {
+                let mut out_len: c_int = 0;
+                EVP_DecryptUpdate(
+                    cipher_ctx.as_mut_ptr(),
+                    null_mut(),
+                    &mut out_len,
+                    aad.as_ptr(),
+                    aad.len().try_into()?,
+                )
+            } {
+                return Err(Unspecified);
+            }
+        }
+
         Ok(Self {
             algorithm,
             mode,
             cipher_ctx,
+            context,
         })
     }
 
@@ -240,6 +309,20 @@ impl StreamingDecryptingKey {
     /// # Errors
     /// Returns an error if the output buffer is too small.
     pub fn finish(self, output: &mut [u8]) -> Result<&[u8], Unspecified> {
+        if let Some(tag) = self.context.tag() {
+            let mut tag = Vec::from(tag);
+            if 1 != unsafe {
+                EVP_CIPHER_CTX_ctrl(
+                    self.cipher_ctx.as_mut_ptr(),
+                    EVP_CTRL_AEAD_SET_TAG,
+                    tag.len().try_into()?,
+                    tag.as_mut_ptr().cast(),
+                )
+            } {
+                return Err(Unspecified);
+            }
+        }
+
         let mut outlen: i32 = output.len().try_into()?;
         if 1 != unsafe { EVP_DecryptFinal_ex(*self.cipher_ctx, output.as_mut_ptr(), &mut outlen) } {
             return Err(Unspecified);
@@ -275,6 +358,17 @@ impl StreamingDecryptingKey {
         context: DecryptionContext,
     ) -> Result<Self, Unspecified> {
         Self::new(key, OperatingMode::CBC, context)
+    }
+
+    /// GCM cipher mode
+    /// # Errors
+    /// If the key is not valid for the cipher algorithm
+    pub fn gcm(key: UnboundCipherKey, context: DecryptionContext) -> Result<Self, Unspecified> {
+        if let DecryptionContext::AEAD(..) = context {
+            Self::new(key, OperatingMode::GCM, context)
+        } else {
+            Err(Unspecified)
+        }
     }
 }
 
@@ -328,7 +422,7 @@ mod tests {
                 assert!(ciphertext.len() > plaintext.len());
                 assert!(ciphertext.len() <= plaintext.len() + alg.block_len());
             }
-            OperatingMode::CTR => {
+            OperatingMode::CTR | OperatingMode::GCM => {
                 assert_eq!(ciphertext.len(), plaintext.len());
             }
         }
@@ -377,7 +471,7 @@ mod tests {
                 assert!(ciphertext.len() > plaintext.len());
                 assert!(ciphertext.len() <= plaintext.len() + alg.block_len());
             }
-            OperatingMode::CTR => {
+            OperatingMode::CTR | OperatingMode::GCM => {
                 assert_eq!(ciphertext.len(), plaintext.len());
             }
         }
@@ -413,6 +507,7 @@ mod tests {
 
     helper_stream_step_encrypt_test!(cbc_pkcs7);
     helper_stream_step_encrypt_test!(ctr);
+    helper_stream_step_encrypt_test!(gcm);
 
     #[test]
     fn test_step_cbc() {
@@ -517,6 +612,63 @@ mod tests {
                 256,
             );
             helper_test_ctr_stream_encrypt_step_n_bytes(
+                encrypting_key_creator,
+                decrypting_key_creator,
+                j,
+                1,
+            );
+        }
+    }
+
+    #[test]
+    fn test_step_gcm() {
+        let random = SystemRandom::new();
+        let mut key = [0u8; AES_256_KEY_LEN];
+        random.fill(&mut key).unwrap();
+        let key = key;
+        let aad = "gcm test".as_bytes();
+
+        let encrypting_key_creator = || {
+            let key = UnboundCipherKey::new(&AES_256, &key.clone()).unwrap();
+            StreamingEncryptingKey::gcm(key, aad).unwrap()
+        };
+        let decrypting_key_creator = |decryption_ctx: DecryptionContext| {
+            let key = UnboundCipherKey::new(&AES_256, &key.clone()).unwrap();
+            StreamingDecryptingKey::gcm(key, decryption_ctx).unwrap()
+        };
+
+        for i in 13..=21 {
+            for j in 124..=131 {
+                helper_test_gcm_stream_encrypt_step_n_bytes(
+                    encrypting_key_creator,
+                    decrypting_key_creator,
+                    j,
+                    i,
+                );
+            }
+            for j in 124..=131 {
+                helper_test_gcm_stream_encrypt_step_n_bytes(
+                    encrypting_key_creator,
+                    decrypting_key_creator,
+                    j,
+                    j - i,
+                );
+            }
+        }
+        for j in 124..=131 {
+            helper_test_gcm_stream_encrypt_step_n_bytes(
+                encrypting_key_creator,
+                decrypting_key_creator,
+                j,
+                j,
+            );
+            helper_test_gcm_stream_encrypt_step_n_bytes(
+                encrypting_key_creator,
+                decrypting_key_creator,
+                j,
+                256,
+            );
+            helper_test_gcm_stream_encrypt_step_n_bytes(
                 encrypting_key_creator,
                 decrypting_key_creator,
                 j,

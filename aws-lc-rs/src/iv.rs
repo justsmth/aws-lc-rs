@@ -13,6 +13,9 @@ use zeroize::Zeroize;
 /// Length of a 128-bit IV in bytes.
 pub const IV_LEN_128_BIT: usize = 16;
 
+/// Length of a 96-bit IV in bytes.
+pub const IV_LEN_96_BIT: usize = 12;
+
 /// An initialization vector that must be unique for the lifetime of the associated key
 /// it is used with.
 pub struct FixedLength<const L: usize>([u8; L]);

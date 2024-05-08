@@ -3,6 +3,8 @@
 // Modifications copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
+#![allow(missing_docs)]
+
 //! Block and Stream Ciphers for Encryption and Decryption.
 //!
 //! # 🛑 Read Before Using
@@ -202,8 +204,9 @@ use crate::hkdf::KeyType;
 use crate::iv::{FixedLength, IV_LEN_128_BIT};
 use crate::ptr::ConstPointer;
 use aws_lc::{
-    AES_cbc_encrypt, AES_ctr128_encrypt, EVP_aes_128_cbc, EVP_aes_128_ctr, EVP_aes_256_cbc,
-    EVP_aes_256_ctr, AES_DECRYPT, AES_ENCRYPT, AES_KEY, EVP_CIPHER,
+    AES_cbc_encrypt, AES_ctr128_encrypt, EVP_aes_128_cbc, EVP_aes_128_ctr, EVP_aes_128_gcm,
+    EVP_aes_256_cbc, EVP_aes_256_ctr, EVP_aes_256_gcm, AES_DECRYPT, AES_ENCRYPT, AES_KEY,
+    EVP_CIPHER,
 };
 use core::fmt::Debug;
 use core::mem::MaybeUninit;
@@ -236,6 +239,9 @@ pub enum OperatingMode {
 
     /// Counter (CTR) mode.
     CTR,
+
+    /// Galois/Counter (GCM) mode.
+    GCM,
 }
 
 impl OperatingMode {
@@ -246,10 +252,30 @@ impl OperatingMode {
             (OperatingMode::CTR, AlgorithmId::Aes128) => unsafe { EVP_aes_128_ctr() },
             (OperatingMode::CBC, AlgorithmId::Aes256) => unsafe { EVP_aes_256_cbc() },
             (OperatingMode::CTR, AlgorithmId::Aes256) => unsafe { EVP_aes_256_ctr() },
+            (OperatingMode::GCM, AlgorithmId::Aes128) => unsafe { EVP_aes_128_gcm() },
+            (OperatingMode::GCM, AlgorithmId::Aes256) => unsafe { EVP_aes_256_gcm() },
         })
         .unwrap()
     }
 }
+
+struct CipherAadBufferType();
+pub struct CipherAad(Buffer<'static, CipherAadBufferType>);
+
+impl CipherAad {
+    #[must_use]
+    pub fn new<T: AsRef<[u8]>>(aad: T) -> Self {
+        Self(Buffer::new(aad.as_ref().to_vec()))
+    }
+}
+
+impl AsRef<[u8]> for CipherAad {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+const AEAD_TAG_LEN: usize = 16;
 
 macro_rules! define_cipher_context {
     ($name:ident, $other:ident) => {
@@ -258,6 +284,37 @@ macro_rules! define_cipher_context {
         pub enum $name {
             /// A 128-bit Initialization Vector.
             Iv128(FixedLength<IV_LEN_128_BIT>),
+            AEAD(
+                CipherAad,
+                FixedLength<12>,
+                Option<FixedLength<AEAD_TAG_LEN>>,
+            ),
+        }
+
+        impl $name {
+            /// Returns the IV for this context.
+            /// This is only valid for encryption contexts.
+            #[must_use]
+            pub fn iv(&self) -> &[u8] {
+                match self {
+                    $name::Iv128(iv) => iv.as_ref(),
+                    $name::AEAD(_, iv, _) => iv.as_ref(),
+                }
+            }
+            #[must_use]
+            pub fn aad(&self) -> Option<&[u8]> {
+                match self {
+                    $name::AEAD(aad, ..) => Some(aad.as_ref()),
+                    _ => None,
+                }
+            }
+            #[must_use]
+            pub fn tag(&self) -> Option<&[u8]> {
+                match self {
+                    $name::AEAD(.., Some(tag)) => Some(tag.as_ref()),
+                    _ => None,
+                }
+            }
         }
 
         impl<'a> TryFrom<&'a $name> for &'a [u8] {
@@ -266,6 +323,7 @@ macro_rules! define_cipher_context {
             fn try_from(value: &'a $name) -> Result<Self, Unspecified> {
                 match value {
                     $name::Iv128(iv) => Ok(iv.as_ref()),
+                    $name::AEAD(..) => Err(Unspecified),
                 }
             }
         }
@@ -274,6 +332,7 @@ macro_rules! define_cipher_context {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 match self {
                     Self::Iv128(_) => write!(f, "Iv128"),
+                    Self::AEAD(..) => write!(f, "AEAD"),
                 }
             }
         }
@@ -282,6 +341,7 @@ macro_rules! define_cipher_context {
             fn from(value: $other) -> Self {
                 match value {
                     $other::Iv128(iv) => $name::Iv128(iv),
+                    $other::AEAD(aad, iv, tag) => $name::AEAD(aad, iv, tag),
                 }
             }
         }
@@ -344,6 +404,7 @@ impl Algorithm {
                 OperatingMode::CBC | OperatingMode::CTR => {
                     Ok(EncryptionContext::Iv128(FixedLength::new()?))
                 }
+                OperatingMode::GCM => Err(Unspecified),
             },
         }
     }
@@ -354,6 +415,7 @@ impl Algorithm {
                 OperatingMode::CBC | OperatingMode::CTR => {
                     matches!(input, EncryptionContext::Iv128(_))
                 }
+                OperatingMode::GCM => false,
             },
         }
     }
@@ -364,6 +426,7 @@ impl Algorithm {
                 OperatingMode::CBC | OperatingMode::CTR => {
                     matches!(input, DecryptionContext::Iv128(_))
                 }
+                OperatingMode::GCM => false,
             },
         }
     }
@@ -612,6 +675,9 @@ fn encrypt(
         OperatingMode::CTR => match algorithm.id() {
             AlgorithmId::Aes128 | AlgorithmId::Aes256 => encrypt_aes_ctr_mode(key, context, in_out),
         },
+        OperatingMode::GCM => match algorithm.id() {
+            AlgorithmId::Aes128 | AlgorithmId::Aes256 => todo!("Implement GCM"),
+        },
     }
 }
 
@@ -639,6 +705,9 @@ fn decrypt<'in_out>(
         },
         OperatingMode::CTR => match algorithm.id() {
             AlgorithmId::Aes128 | AlgorithmId::Aes256 => decrypt_aes_ctr_mode(key, context, in_out),
+        },
+        OperatingMode::GCM => match algorithm.id() {
+            AlgorithmId::Aes128 | AlgorithmId::Aes256 => todo!(),
         },
     }
 }
