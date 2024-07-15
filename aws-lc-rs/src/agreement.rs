@@ -61,11 +61,12 @@ use crate::fips::indicator_check;
 use crate::ptr::{ConstPointer, LcPtr, Pointer};
 use crate::{ec, hex};
 use aws_lc::{
-    EVP_PKEY_CTX_new, EVP_PKEY_CTX_new_id, EVP_PKEY_derive, EVP_PKEY_derive_init,
-    EVP_PKEY_derive_set_peer, EVP_PKEY_get0_EC_KEY, EVP_PKEY_get_raw_private_key,
-    EVP_PKEY_get_raw_public_key, EVP_PKEY_keygen, EVP_PKEY_keygen_init,
-    EVP_PKEY_new_raw_private_key, EVP_PKEY_new_raw_public_key, NID_X9_62_prime256v1, NID_secp384r1,
-    NID_secp521r1, BIGNUM, EVP_PKEY, EVP_PKEY_X25519, NID_X25519,
+    point_conversion_form_t, EVP_PKEY_CTX_new, EVP_PKEY_CTX_new_id, EVP_PKEY_derive,
+    EVP_PKEY_derive_init, EVP_PKEY_derive_set_peer, EVP_PKEY_get0_EC_KEY,
+    EVP_PKEY_get_raw_private_key, EVP_PKEY_get_raw_public_key, EVP_PKEY_keygen,
+    EVP_PKEY_keygen_init, EVP_PKEY_new_raw_private_key, EVP_PKEY_new_raw_public_key,
+    NID_X9_62_prime256v1, NID_secp384r1, NID_secp521r1, BIGNUM, EVP_PKEY, EVP_PKEY_X25519,
+    NID_X25519,
 };
 
 use crate::encoding::{
@@ -101,6 +102,16 @@ impl AlgorithmID {
             AlgorithmID::ECDH_P256 => 65,
             AlgorithmID::ECDH_P384 => 97,
             AlgorithmID::ECDH_P521 => 133,
+            AlgorithmID::X25519 => 32,
+        }
+    }
+
+    #[inline]
+    const fn compressed_pub_key_len(&self) -> usize {
+        match self {
+            AlgorithmID::ECDH_P256 => 33,
+            AlgorithmID::ECDH_P384 => 49,
+            AlgorithmID::ECDH_P521 => 67,
             AlgorithmID::X25519 => 32,
         }
     }
@@ -317,7 +328,7 @@ impl PrivateKey {
 
     #[cfg(test)]
     #[allow(clippy::missing_errors_doc)]
-    pub fn generate_for_test(
+    pub(super) fn generate_for_test(
         alg: &'static Algorithm,
         rng: &dyn crate::rand::SecureRandom,
     ) -> Result<Self, Unspecified> {
@@ -392,22 +403,44 @@ impl PrivateKey {
     /// # Errors
     /// `error::Unspecified` when operation fails due to internal error.
     pub fn compute_public_key(&self) -> Result<PublicKey, Unspecified> {
-        match &self.inner_key {
-            KeyInner::ECDH_P256(evp_pkey)
-            | KeyInner::ECDH_P384(evp_pkey)
-            | KeyInner::ECDH_P521(evp_pkey) => {
+        Self::inner_compute_public_key(self, false)
+    }
+
+    /// Computes the public key in compressed format from the private key.
+    ///
+    /// # Errors
+    /// `error::Unspecified` when operation fails due to internal error.
+    pub fn compute_compressed_public_key(&self) -> Result<PublicKey, Unspecified> {
+        Self::inner_compute_public_key(self, true)
+    }
+
+    fn inner_compute_public_key(&self, compressed: bool) -> Result<PublicKey, Unspecified> {
+        match (&self.inner_key, compressed) {
+            (
+                KeyInner::ECDH_P256(evp_pkey)
+                | KeyInner::ECDH_P384(evp_pkey)
+                | KeyInner::ECDH_P521(evp_pkey),
+                compressed,
+            ) => {
+                let pt_conv_form = if compressed {
+                    point_conversion_form_t::POINT_CONVERSION_COMPRESSED
+                } else {
+                    point_conversion_form_t::POINT_CONVERSION_UNCOMPRESSED
+                };
                 let mut buffer = [0u8; MAX_PUBLIC_KEY_LEN];
-                unsafe {
-                    let key_len =
-                        ec::marshal_public_key_to_buffer(&mut buffer, &evp_pkey.as_const())?;
-                    Ok(PublicKey {
-                        alg: self.algorithm(),
-                        public_key: buffer,
-                        len: key_len,
-                    })
-                }
+                let key_len = ec::marshal_public_key_to_buffer(
+                    &mut buffer,
+                    &evp_pkey.as_const(),
+                    pt_conv_form,
+                )?;
+
+                Ok(PublicKey {
+                    alg: self.algorithm(),
+                    public_key: buffer,
+                    len: key_len,
+                })
             }
-            KeyInner::X25519(priv_key) => {
+            (KeyInner::X25519(priv_key), _) => {
                 let mut buffer = [0u8; MAX_PUBLIC_KEY_LEN];
                 let mut out_len = buffer.len();
 
@@ -656,14 +689,15 @@ where
     F: FnOnce(&[u8]) -> Result<R, E>,
 {
     let expected_alg = my_private_key.algorithm();
-    let expected_pub_key_len = expected_alg.id.pub_key_len();
     let expected_nid = expected_alg.id.nid();
 
     if peer_public_key.alg != expected_alg {
         return Err(error_value);
     }
     let peer_pub_bytes = peer_public_key.bytes.as_ref();
-    if peer_pub_bytes.len() != expected_pub_key_len {
+    if peer_pub_bytes.len() != expected_alg.id.pub_key_len()
+        && peer_pub_bytes.len() != expected_alg.id.compressed_pub_key_len()
+    {
         return Err(error_value);
     }
 
@@ -1152,5 +1186,58 @@ mod tests {
             format!("{unparsed_pubkey_clone:?}"),
             r#"UnparsedPublicKey { algorithm: Algorithm { curve: Curve25519 }, bytes: "010203" }"#
         );
+    }
+
+    #[test]
+    fn test_agreement_compressed() {
+        let test_algorithms = [&ECDH_P256, &ECDH_P384, &ECDH_P521, &X25519];
+
+        for alg in test_algorithms {
+            test_agreement_compressed_helper(alg);
+        }
+    }
+
+    fn test_agreement_compressed_helper(alg: &'static Algorithm) {
+        let peer_private = PrivateKey::generate(alg).unwrap();
+        let my_private = PrivateKey::generate(alg).unwrap();
+
+        fn convert_to_unparsed(
+            alg: &'static Algorithm,
+            public_key: PublicKey,
+        ) -> UnparsedPublicKey<Vec<u8>> {
+            UnparsedPublicKey::new(alg, public_key.as_ref().to_vec())
+        }
+
+        let peer_public_keys = [
+            convert_to_unparsed(alg, peer_private.compute_public_key().unwrap()),
+            convert_to_unparsed(alg, peer_private.compute_compressed_public_key().unwrap()),
+        ];
+
+        let my_public_keys = [
+            convert_to_unparsed(alg, my_private.compute_public_key().unwrap()),
+            convert_to_unparsed(alg, my_private.compute_compressed_public_key().unwrap()),
+        ];
+
+        let mut results: Vec<Vec<u8>> = Vec::new();
+
+        for peer_public in peer_public_keys {
+            let result = agree(&my_private, &peer_public, (), |key_material| {
+                results.push(key_material.to_vec());
+                Ok(())
+            });
+            assert_eq!(result, Ok(()));
+        }
+
+        for my_public in my_public_keys {
+            let result = agree(&peer_private, &my_public, (), |key_material| {
+                results.push(key_material.to_vec());
+                Ok(())
+            });
+            assert_eq!(result, Ok(()));
+        }
+        assert_eq!(results.len(), 4);
+        for consecutive_results in results.windows(2) {
+            assert_eq!(consecutive_results[0], consecutive_results[1]);
+        }
     }
 }

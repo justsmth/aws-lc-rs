@@ -58,6 +58,14 @@ impl EphemeralPrivateKey {
         self.0.compute_public_key()
     }
 
+    /// Computes the public key in compressed format from the private key.
+    ///
+    /// # Errors
+    /// `error::Unspecified` when operation fails due to internal error.
+    pub fn compute_compressed_public_key(&self) -> Result<PublicKey, Unspecified> {
+        self.0.compute_compressed_public_key()
+    }
+
     /// The algorithm for the private key.
     #[inline]
     #[must_use]
@@ -377,7 +385,13 @@ mod tests {
                         assert_eq!(my_private.algorithm(), alg);
 
                         let computed_public = my_private.compute_public_key().unwrap();
-                        assert_eq!(computed_public.as_ref(), &my_public[..]);
+                        if computed_public.as_ref().len() == my_public.len() {
+                            assert_eq!(computed_public.as_ref(), &my_public[..]);
+                        } else {
+                            let computed_public =
+                                my_private.compute_compressed_public_key().unwrap();
+                            assert_eq!(computed_public.as_ref(), &my_public[..]);
+                        }
 
                         assert_eq!(my_private.algorithm(), alg);
 

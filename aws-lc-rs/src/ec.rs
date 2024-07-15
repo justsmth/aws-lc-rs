@@ -362,39 +362,40 @@ pub(crate) unsafe fn unmarshal_der_to_private_key(
     Ok(evp_pkey)
 }
 
-pub(crate) unsafe fn marshal_public_key_to_buffer(
+pub(crate) fn marshal_public_key_to_buffer(
     buffer: &mut [u8; PUBLIC_KEY_MAX_LEN],
     evp_pkey: &ConstPointer<EVP_PKEY>,
+    pt_conv_form: point_conversion_form_t,
 ) -> Result<usize, Unspecified> {
-    let ec_key = ConstPointer::new(EVP_PKEY_get0_EC_KEY(**evp_pkey))?;
-    marshal_ec_public_key_to_buffer(buffer, &ec_key)
+    let ec_key = ConstPointer::new(unsafe { EVP_PKEY_get0_EC_KEY(**evp_pkey) })?;
+    marshal_ec_public_key_to_buffer(buffer, &ec_key, pt_conv_form)
 }
 
-pub(crate) unsafe fn marshal_ec_public_key_to_buffer(
+pub(crate) fn marshal_ec_public_key_to_buffer(
     buffer: &mut [u8; PUBLIC_KEY_MAX_LEN],
     ec_key: &ConstPointer<EC_KEY>,
+    pt_conv_form: point_conversion_form_t,
 ) -> Result<usize, Unspecified> {
-    let ec_group = ConstPointer::new(EC_KEY_get0_group(**ec_key))?;
+    let ec_group = ConstPointer::new(unsafe { EC_KEY_get0_group(**ec_key) })?;
 
-    let ec_point = ConstPointer::new(EC_KEY_get0_public_key(**ec_key))?;
+    let ec_point = ConstPointer::new(unsafe { EC_KEY_get0_public_key(**ec_key) })?;
 
-    let out_len = ec_point_to_bytes(&ec_group, &ec_point, buffer)?;
+    let out_len = ec_point_to_bytes(&ec_group, &ec_point, buffer, pt_conv_form)?;
     Ok(out_len)
 }
 
 pub(crate) fn marshal_public_key(
     evp_pkey: &ConstPointer<EVP_PKEY>,
     algorithm: &'static EcdsaSigningAlgorithm,
+    pt_conv_form: point_conversion_form_t,
 ) -> Result<PublicKey, Unspecified> {
     let mut pub_key_bytes = [0u8; PUBLIC_KEY_MAX_LEN];
-    unsafe {
-        let key_len = marshal_public_key_to_buffer(&mut pub_key_bytes, evp_pkey)?;
+    let key_len = marshal_public_key_to_buffer(&mut pub_key_bytes, evp_pkey, pt_conv_form)?;
 
-        Ok(PublicKey {
-            algorithm,
-            octets: pub_key_bytes[0..key_len].into(),
-        })
-    }
+    Ok(PublicKey {
+        algorithm,
+        octets: pub_key_bytes[0..key_len].into(),
+    })
 }
 
 #[inline]
@@ -549,21 +550,22 @@ pub(crate) fn ec_point_from_bytes(
 }
 
 #[inline]
-unsafe fn ec_point_to_bytes(
+fn ec_point_to_bytes(
     ec_group: &ConstPointer<EC_GROUP>,
     ec_point: &ConstPointer<EC_POINT>,
     buf: &mut [u8; PUBLIC_KEY_MAX_LEN],
+    pt_conv_form: point_conversion_form_t,
 ) -> Result<usize, Unspecified> {
-    let pt_conv_form = point_conversion_form_t::POINT_CONVERSION_UNCOMPRESSED;
-
-    let out_len = EC_POINT_point2oct(
-        **ec_group,
-        **ec_point,
-        pt_conv_form,
-        buf.as_mut_ptr(),
-        PUBLIC_KEY_MAX_LEN,
-        null_mut(),
-    );
+    let out_len = unsafe {
+        EC_POINT_point2oct(
+            **ec_group,
+            **ec_point,
+            pt_conv_form,
+            buf.as_mut_ptr(),
+            PUBLIC_KEY_MAX_LEN,
+            null_mut(),
+        )
+    };
     if out_len == 0 {
         return Err(Unspecified);
     }

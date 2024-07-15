@@ -8,7 +8,9 @@ use core::fmt::{Debug, Formatter};
 use core::mem::MaybeUninit;
 use core::ptr::{null, null_mut};
 
-use aws_lc::{EVP_DigestSign, EVP_DigestSignInit, EVP_PKEY_get0_EC_KEY, EVP_PKEY};
+use aws_lc::{
+    point_conversion_form_t, EVP_DigestSign, EVP_DigestSignInit, EVP_PKEY_get0_EC_KEY, EVP_PKEY,
+};
 
 use crate::digest::digest_ctx::DigestContext;
 #[cfg(feature = "fips")]
@@ -60,13 +62,28 @@ impl EcdsaKeyPair {
         algorithm: &'static EcdsaSigningAlgorithm,
         evp_pkey: LcPtr<EVP_PKEY>,
     ) -> Result<Self, ()> {
-        let pubkey = ec::marshal_public_key(&evp_pkey.as_const(), algorithm)?;
+        let pt_conv_form = point_conversion_form_t::POINT_CONVERSION_UNCOMPRESSED;
+        let pubkey = ec::marshal_public_key(&evp_pkey.as_const(), algorithm, pt_conv_form)?;
 
         Ok(Self {
             algorithm,
             evp_pkey,
             pubkey,
         })
+    }
+
+    /// Provides the compressed public key.
+    ///
+    /// # Errors
+    /// `error::Unspecified` on internal error.
+    ///
+    pub fn compressed_public_key(&self) -> Result<PublicKey, Unspecified> {
+        let pt_conv_form = point_conversion_form_t::POINT_CONVERSION_COMPRESSED;
+        Ok(ec::marshal_public_key(
+            &self.evp_pkey.as_const(),
+            self.algorithm,
+            pt_conv_form,
+        )?)
     }
 
     /// Generates a new key pair.

@@ -335,9 +335,18 @@ fn test_signature_ecdsa_sign_fixed_sign_and_verify(data_file: test::File) {
 
         let signature = private_key.sign(&rng, &msg).unwrap();
 
-        let public_key = UnparsedPublicKey::new(verification_alg, q);
-        let vfy_result = public_key.verify(&msg, signature.as_ref());
-        assert!(vfy_result.is_ok());
+        let public_keys = [
+            UnparsedPublicKey::new(verification_alg, q),
+            UnparsedPublicKey::new(verification_alg, private_key.public_key().as_ref().to_vec()),
+            UnparsedPublicKey::new(
+                verification_alg,
+                private_key.compressed_public_key()?.as_ref().to_vec(),
+            ),
+        ];
+        for public_key in public_keys {
+            let vfy_result = public_key.verify(&msg, signature.as_ref());
+            assert!(vfy_result.is_ok());
+        }
 
         Ok(())
     });
@@ -413,8 +422,18 @@ fn test_signature_ecdsa_sign_asn1(data_file: test::File) {
 
         let signature = private_key.sign(&rng, &msg).unwrap();
 
-        let public_key = UnparsedPublicKey::new(verification_alg, q);
-        assert_eq!(public_key.verify(&msg, signature.as_ref()), Ok(()));
+        let public_keys = [
+            UnparsedPublicKey::new(verification_alg, q),
+            UnparsedPublicKey::new(verification_alg, private_key.public_key().as_ref().to_vec()),
+            UnparsedPublicKey::new(
+                verification_alg,
+                private_key.compressed_public_key()?.as_ref().to_vec(),
+            ),
+        ];
+        for public_key in public_keys {
+            let vfy_result = public_key.verify(&msg, signature.as_ref());
+            assert!(vfy_result.is_ok());
+        }
 
         Ok(())
     });
