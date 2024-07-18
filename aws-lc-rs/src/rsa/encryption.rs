@@ -169,7 +169,7 @@ impl PrivateDecryptingKey {
     /// # Errors
     /// * `Unspecified` for any error that occurs during deserialization.
     pub fn from_pem(pem_data: &str) -> Result<Self, KeyRejected> {
-        let key = encoding::pem::decode_private_key_pem(pem_data)?;
+        let key = encoding::pem::decode_rsa_private_key_pem(pem_data)?;
         Ok(Self::new(key)?)
     }
 
@@ -252,7 +252,7 @@ impl PublicEncryptingKey {
     /// # Errors
     /// * `Unspecified` for any error that occurs deserializing from bytes.
     pub fn from_pem(value: &str) -> Result<Self, KeyRejected> {
-        Ok(Self(encoding::pem::decode_public_key_pem(value)?))
+        Ok(Self(encoding::pem::decode_rsa_public_key_pem(value)?))
     }
 
     /// Returns the RSA key size in bytes.

@@ -85,7 +85,7 @@ pub(crate) use self::signature::RsaVerificationAlgorithmId;
 
 #[cfg(test)]
 mod tests {
-    use crate::encoding::AsPEM;
+    use crate::encoding::AsPem;
 
     #[cfg(feature = "fips")]
     mod fips;
