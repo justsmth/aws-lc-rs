@@ -162,6 +162,17 @@ impl PrivateDecryptingKey {
         Ok(Self::new(key)?)
     }
 
+    /// Construct a `PrivateDecryptingKey` from the provided PEM document.
+    ///
+    /// Supports RSA key sizes between 2048 and 8192 (inclusive).
+    ///
+    /// # Errors
+    /// * `Unspecified` for any error that occurs during deserialization.
+    pub fn from_pem(pem_data: &str) -> Result<Self, KeyRejected> {
+        let key = encoding::pem::decode_private_key_pem(pem_data)?;
+        Ok(Self::new(key)?)
+    }
+
     /// Returns a boolean indicator if this RSA key is an approved FIPS 140-3 key.
     #[cfg(feature = "fips")]
     #[must_use]
@@ -234,6 +245,14 @@ impl PublicEncryptingKey {
     /// * `Unspecified` for any error that occurs deserializing from bytes.
     pub fn from_der(value: &[u8]) -> Result<Self, KeyRejected> {
         Ok(Self(encoding::rfc5280::decode_public_key_der(value)?))
+    }
+
+    /// Construct a `PublicEncryptingKey` from contents of a PEM file.
+    ///
+    /// # Errors
+    /// * `Unspecified` for any error that occurs deserializing from bytes.
+    pub fn from_pem(value: &str) -> Result<Self, KeyRejected> {
+        Ok(Self(encoding::pem::decode_public_key_pem(value)?))
     }
 
     /// Returns the RSA key size in bytes.

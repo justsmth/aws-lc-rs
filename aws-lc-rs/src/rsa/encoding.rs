@@ -45,6 +45,46 @@ pub(in crate::rsa) mod pkcs8 {
     }
 }
 
+pub(in crate::rsa) mod pem {
+    use crate::error::KeyRejected;
+    use crate::ptr::{LcPtr, Pointer};
+    use crate::rsa::key::is_rsa_key;
+    use aws_lc::{
+        ossl_ssize_t, BIO_new_mem_buf, PEM_read_bio_PUBKEY, PEM_read_bio_PrivateKey, EVP_PKEY,
+    };
+    use std::ptr::null_mut;
+
+    pub(in crate::rsa) fn decode_public_key_pem(
+        pem_data: &str,
+    ) -> Result<LcPtr<EVP_PKEY>, KeyRejected> {
+        let pem_size: ossl_ssize_t = pem_data.len().try_into()?;
+        let mut bio_pem =
+            LcPtr::new(unsafe { BIO_new_mem_buf(pem_data.as_ptr().cast(), pem_size) })?;
+        let key = LcPtr::new(unsafe {
+            PEM_read_bio_PUBKEY(bio_pem.as_mut_ptr(), null_mut(), None, null_mut())
+        })?;
+        if !is_rsa_key(&key) {
+            return Err(KeyRejected::unspecified());
+        }
+        Ok(key)
+    }
+
+    pub(in crate::rsa) fn decode_private_key_pem(
+        pem_data: &str,
+    ) -> Result<LcPtr<EVP_PKEY>, KeyRejected> {
+        let pem_size: ossl_ssize_t = pem_data.len().try_into()?;
+        let mut bio_pem =
+            LcPtr::new(unsafe { BIO_new_mem_buf(pem_data.as_ptr().cast(), pem_size) })?;
+        let key = LcPtr::new(unsafe {
+            PEM_read_bio_PrivateKey(bio_pem.as_mut_ptr(), null_mut(), None, null_mut())
+        })?;
+        if !is_rsa_key(&key) {
+            return Err(KeyRejected::unspecified());
+        }
+        Ok(key)
+    }
+}
+
 /// [RFC 8017](https://www.rfc-editor.org/rfc/rfc8017.html)
 ///
 /// PKCS #1: RSA Cryptography Specifications Version 2.2
@@ -61,20 +101,22 @@ pub(in crate::rsa) mod rfc8017 {
     use std::ptr::null_mut;
 
     /// DER encode a RSA public key to `RSAPublicKey` structure.
-    pub(in crate::rsa) unsafe fn encode_public_key_der(
+    pub(in crate::rsa) fn encode_public_key_der(
         pubkey: &LcPtr<EVP_PKEY>,
     ) -> Result<Box<[u8]>, Unspecified> {
         let mut pubkey_bytes = null_mut::<u8>();
         let mut outlen: usize = 0;
-        if 1 != RSA_public_key_to_bytes(
-            &mut pubkey_bytes,
-            &mut outlen,
-            *pubkey.get_rsa()?.as_const(),
-        ) {
+        if 1 != unsafe {
+            RSA_public_key_to_bytes(
+                &mut pubkey_bytes,
+                &mut outlen,
+                *pubkey.get_rsa()?.as_const(),
+            )
+        } {
             return Err(Unspecified);
         }
         let pubkey_bytes = LcPtr::new(pubkey_bytes)?;
-        let pubkey_slice = pubkey_bytes.as_slice(outlen);
+        let pubkey_slice = unsafe { pubkey_bytes.as_slice(outlen) };
         let pubkey_vec = Vec::from(pubkey_slice);
         Ok(pubkey_vec.into_boxed_slice())
     }

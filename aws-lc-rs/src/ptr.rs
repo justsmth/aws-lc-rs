@@ -5,10 +5,10 @@ use core::ops::Deref;
 use std::ops::DerefMut;
 
 use aws_lc::{
-    BN_free, ECDSA_SIG_free, EC_GROUP_free, EC_KEY_free, EC_POINT_free, EVP_AEAD_CTX_free,
-    EVP_CIPHER_CTX_free, EVP_PKEY_CTX_free, EVP_PKEY_free, OPENSSL_free, RSA_free, BIGNUM,
-    ECDSA_SIG, EC_GROUP, EC_KEY, EC_POINT, EVP_AEAD_CTX, EVP_CIPHER_CTX, EVP_PKEY, EVP_PKEY_CTX,
-    RSA,
+    BIO_free, BN_free, ECDSA_SIG_free, EC_GROUP_free, EC_KEY_free, EC_POINT_free,
+    EVP_AEAD_CTX_free, EVP_CIPHER_CTX_free, EVP_PKEY_CTX_free, EVP_PKEY_free, OPENSSL_free,
+    RSA_free, BIGNUM, BIO, ECDSA_SIG, EC_GROUP, EC_KEY, EC_POINT, EVP_AEAD_CTX, EVP_CIPHER_CTX,
+    EVP_PKEY, EVP_PKEY_CTX, RSA,
 };
 
 use mirai_annotations::verify_unreachable;
@@ -217,6 +217,7 @@ create_pointer!(EVP_PKEY_CTX, EVP_PKEY_CTX_free);
 create_pointer!(RSA, RSA_free);
 create_pointer!(EVP_AEAD_CTX, EVP_AEAD_CTX_free);
 create_pointer!(EVP_CIPHER_CTX, EVP_CIPHER_CTX_free);
+create_pointer!(BIO, BIO_free);
 
 #[cfg(test)]
 mod tests {

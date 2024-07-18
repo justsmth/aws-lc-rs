@@ -109,7 +109,7 @@ unsafe impl Sync for KeyPair {}
 impl KeyPair {
     fn new(evp_pkey: LcPtr<EVP_PKEY>) -> Result<Self, KeyRejected> {
         KeyPair::validate_private_key(&evp_pkey)?;
-        let serialized_public_key = unsafe { PublicKey::new(&evp_pkey)? };
+        let serialized_public_key = PublicKey::new(&evp_pkey)?;
         Ok(KeyPair {
             evp_pkey,
             serialized_public_key,
@@ -166,6 +166,15 @@ impl KeyPair {
     /// `error:KeyRejected` on error.
     pub fn from_der(input: &[u8]) -> Result<Self, KeyRejected> {
         let key = encoding::rfc8017::decode_private_key_der(input)?;
+        Self::new(key)
+    }
+
+    /// Creates an RSA `KeyPair` from parsing PEM contents.
+    ///
+    /// # Errors
+    /// `error:KeyRejected` on error.
+    pub fn from_pem(input: &str) -> Result<Self, KeyRejected> {
+        let key = encoding::pem::decode_private_key_pem(input)?;
         Self::new(key)
     }
 
@@ -312,14 +321,14 @@ impl Drop for PublicKey {
 }
 
 impl PublicKey {
-    pub(super) unsafe fn new(evp_pkey: &LcPtr<EVP_PKEY>) -> Result<Self, Unspecified> {
+    pub(super) fn new(evp_pkey: &LcPtr<EVP_PKEY>) -> Result<Self, Unspecified> {
         let key = encoding::rfc8017::encode_public_key_der(evp_pkey)?;
         #[cfg(feature = "ring-io")]
         {
             let pubkey = evp_pkey.get_rsa()?;
-            let modulus = ConstPointer::new(RSA_get0_n(*pubkey))?;
+            let modulus = ConstPointer::new(unsafe { RSA_get0_n(*pubkey) })?;
             let modulus = modulus.to_be_bytes().into_boxed_slice();
-            let exponent = ConstPointer::new(RSA_get0_e(*pubkey))?;
+            let exponent = ConstPointer::new(unsafe { RSA_get0_e(*pubkey) })?;
             let exponent = exponent.to_be_bytes().into_boxed_slice();
             Ok(PublicKey {
                 key,
@@ -330,6 +339,15 @@ impl PublicKey {
 
         #[cfg(not(feature = "ring-io"))]
         Ok(PublicKey { key })
+    }
+
+    /// Construct a `PublicKey` from X.509 `SubjectPublicKeyInfo` DER encoded bytes.
+    ///
+    /// # Errors
+    /// * `Unspecified` for any error that occurs deserializing from bytes.
+    pub fn from_pem(value: &str) -> Result<Self, KeyRejected> {
+        Self::new(&encoding::pem::decode_public_key_pem(value)?)
+            .map_err(|_| KeyRejected::unspecified())
     }
 }
 
