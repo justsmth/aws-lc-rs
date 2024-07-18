@@ -85,6 +85,8 @@ pub(crate) use self::signature::RsaVerificationAlgorithmId;
 
 #[cfg(test)]
 mod tests {
+    use crate::encoding::AsPEM;
+
     #[cfg(feature = "fips")]
     mod fips;
 
@@ -153,16 +155,19 @@ M2HDX8Z+M0HM3XymtcfpHk5o6QF1lbBW+rDJEcYhPN0obBufCXaasgsBRP5Ei2b5
 18xpy9M19By1yuC9mlNcpE5v5A8fq/qLLT4s34/6dnVxKX6gIoWDzDrUNrnPe0p5
 pqZ1SHalrELMf/liXPrf94+0cF8g1fYVGGo+MZsG5/HRngLiskP25w5smMT51U1y
 gQIDAQAB
------END PUBLIC KEY-----";
+-----END PUBLIC KEY-----
+";
 
         let pk = super::PublicKey::from_pem(rsa_pem_input).unwrap();
-        println!("Public Key: {:?}", pk);
-        let _modulus_bytes = pk.modulus().big_endian_without_leading_zero();
+        // Round-trip back to PEM
+        let pem_encoding = pk.as_pem().unwrap();
+        let pem_result = String::from_utf8_lossy(pem_encoding.as_ref());
+        println!("Public Key:\n{pem_result}");
+        assert_eq!(rsa_pem_input, pem_result.as_ref());
     }
 
     #[test]
     fn test_rsa_private_key_pem() {
-        use crate::signature::KeyPair;
         let rsa_pem_input = r"-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDRFuR+0CbfR4Wb
 6jomtpYBtZH7aCs99CTeLfDh4KxkcNCJvqJTBfQxUAN3YONOeWRhrUPK0MdEp9Ye
@@ -190,11 +195,14 @@ J416mbQBSM43OPN3rjBk1560s2c7oBOxAa/1U51xAoGBAOYFMvdk6H359yaJGmsN
 kY7lS6heh4cHfSM7Hw02lh/ovasdQm+afcnDWEW0XQYM6KQCcJiwbIK/kPkVsvJe
 o6gynyWoHrrQuRdmffPvzT50paccJuupeHAtfOAue5y57FQUc4Xm4Qj3P7cQJr9z
 UMCUAooEJcdmAUyVUy5BQc7P
------END PRIVATE KEY-----";
+-----END PRIVATE KEY-----
+";
 
         let key = super::KeyPair::from_pem(rsa_pem_input).unwrap();
-        let pk = key.public_key();
-        println!("Public Key: {:?}", pk);
-        let _modulus_bytes = pk.modulus().big_endian_without_leading_zero();
+        // Round-trip back to PEM
+        let pem_encoding = key.as_pem().unwrap();
+        let pem_result = String::from_utf8_lossy(pem_encoding.as_ref());
+        println!("Private Key:\n{pem_result}");
+        assert_eq!(rsa_pem_input, pem_result.as_ref());
     }
 }

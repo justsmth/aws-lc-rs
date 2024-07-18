@@ -46,13 +46,16 @@ pub(in crate::rsa) mod pkcs8 {
 }
 
 pub(in crate::rsa) mod pem {
-    use crate::error::KeyRejected;
+    use crate::error::{KeyRejected, Unspecified};
     use crate::ptr::{LcPtr, Pointer};
+    use crate::rsa::encoding;
     use crate::rsa::key::is_rsa_key;
     use aws_lc::{
-        ossl_ssize_t, BIO_new_mem_buf, PEM_read_bio_PUBKEY, PEM_read_bio_PrivateKey, EVP_PKEY,
+        ossl_ssize_t, BIO_get_mem_data, BIO_new, BIO_new_mem_buf, BIO_s_mem, PEM_read_bio_PUBKEY,
+        PEM_read_bio_PrivateKey, PEM_write_bio_PKCS8PrivateKey, PEM_write_bio_PUBKEY, EVP_PKEY,
     };
-    use std::ptr::null_mut;
+    use std::ffi::c_char;
+    use std::ptr::{null, null_mut};
 
     pub(in crate::rsa) fn decode_public_key_pem(
         pem_data: &str,
@@ -82,6 +85,50 @@ pub(in crate::rsa) mod pem {
             return Err(KeyRejected::unspecified());
         }
         Ok(key)
+    }
+
+    pub(in crate::rsa) fn encode_pkcs8_pem(key: &LcPtr<EVP_PKEY>) -> Result<Vec<u8>, Unspecified> {
+        let mut bio_pem = LcPtr::new(unsafe { BIO_new(BIO_s_mem()) })?;
+        if 1 != unsafe {
+            PEM_write_bio_PKCS8PrivateKey(
+                bio_pem.as_mut_ptr(),
+                #[cfg(feature = "fips")]
+                **key,
+                #[cfg(not(feature = "fips"))]
+                key.as_const_ptr(),
+                null(),
+                null_mut(),
+                0,
+                None,
+                null_mut(),
+            )
+        } {
+            return Err(Unspecified);
+        }
+        let mut buff_ptr: *mut c_char = null_mut();
+        let size = BIO_get_mem_data(bio_pem.as_mut_ptr(), &mut buff_ptr);
+        let buff_ptr: *const u8 = buff_ptr.cast();
+        let mut my_buffer = vec![0u8; size.try_into()?];
+        let other_buffer = unsafe { std::slice::from_raw_parts(buff_ptr, size.try_into()?) };
+        my_buffer.copy_from_slice(other_buffer);
+
+        Ok(my_buffer)
+    }
+
+    pub(in crate::rsa) fn encode_pubkey_pem(public_key: &[u8]) -> Result<Vec<u8>, Unspecified> {
+        let key = encoding::rfc8017::decode_public_key_der(public_key)?;
+        let mut bio_pem = LcPtr::new(unsafe { BIO_new(BIO_s_mem()) })?;
+        if 1 != unsafe { PEM_write_bio_PUBKEY(bio_pem.as_mut_ptr(), *key) } {
+            return Err(Unspecified);
+        }
+        let mut buff_ptr: *mut c_char = null_mut();
+        let size = BIO_get_mem_data(bio_pem.as_mut_ptr(), &mut buff_ptr);
+        let buff_ptr: *const u8 = buff_ptr.cast();
+        let mut my_buffer = vec![0u8; size.try_into()?];
+        let other_buffer = unsafe { std::slice::from_raw_parts(buff_ptr, size.try_into()?) };
+        my_buffer.copy_from_slice(other_buffer);
+
+        Ok(my_buffer)
     }
 }
 

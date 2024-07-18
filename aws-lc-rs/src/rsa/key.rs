@@ -40,6 +40,7 @@ use core::{
 // use core::ffi::c_int;
 use std::os::raw::c_int;
 
+use crate::encoding::{AsPEM, Pkcs8Pem, X509Asn1Pem};
 use mirai_annotations::verify_unreachable;
 #[cfg(feature = "ring-io")]
 use untrusted::Input;
@@ -299,6 +300,14 @@ impl AsDer<Pkcs8V1Der<'static>> for KeyPair {
     }
 }
 
+impl AsPEM<Pkcs8Pem<'static>> for KeyPair {
+    fn as_pem(&self) -> Result<Pkcs8Pem<'static>, Unspecified> {
+        Ok(Pkcs8Pem::new(encoding::pem::encode_pkcs8_pem(
+            &self.evp_pkey,
+        )?))
+    }
+}
+
 /// A serialized RSA public key.
 #[derive(Clone)]
 #[allow(clippy::module_name_repetitions)]
@@ -348,6 +357,14 @@ impl PublicKey {
     pub fn from_pem(value: &str) -> Result<Self, KeyRejected> {
         Self::new(&encoding::pem::decode_public_key_pem(value)?)
             .map_err(|_| KeyRejected::unspecified())
+    }
+}
+
+impl AsPEM<X509Asn1Pem<'static>> for PublicKey {
+    fn as_pem(&self) -> Result<X509Asn1Pem<'static>, Unspecified> {
+        Ok(X509Asn1Pem::new(encoding::pem::encode_pubkey_pem(
+            self.key.as_ref(),
+        )?))
     }
 }
 

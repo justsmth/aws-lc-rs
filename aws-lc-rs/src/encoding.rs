@@ -3,6 +3,8 @@
 
 //! Serialization formats
 
+#![allow(clippy::module_name_repetitions)]
+
 use crate::buffer::Buffer;
 use paste::paste;
 
@@ -79,4 +81,68 @@ pub trait AsBigEndian<T> {
     /// # Errors
     /// Returns Unspecified if serialization fails.
     fn as_be_bytes(&self) -> Result<T, crate::error::Unspecified>;
+}
+
+// TODO: convert logic below into macro
+mod pem_type {
+
+    /// Marker types for PEM encoding
+    pub struct X509Asn1PemType {
+        _priv: (),
+    }
+
+    pub struct Pkcs8PemType {
+        _priv: (),
+    }
+}
+
+#[allow(dead_code, missing_docs)]
+pub struct X509Asn1Pem<'a>(Buffer<'a, pem_type::X509Asn1PemType>);
+
+#[allow(dead_code)]
+impl X509Asn1Pem<'static> {
+    pub(crate) fn new(owned: Vec<u8>) -> Self {
+        Self(Buffer::new(owned))
+    }
+    pub(crate) fn take_from_slice(slice: &mut [u8]) -> Self {
+        Self(Buffer::take_from_slice(slice))
+    }
+}
+
+impl<'a> Deref for X509Asn1Pem<'a> {
+    type Target = Buffer<'a, pem_type::X509Asn1PemType>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[allow(dead_code, missing_docs)]
+pub struct Pkcs8Pem<'a>(Buffer<'a, pem_type::Pkcs8PemType>);
+
+#[allow(dead_code)]
+impl Pkcs8Pem<'static> {
+    pub(crate) fn new(owned: Vec<u8>) -> Self {
+        Self(Buffer::new(owned))
+    }
+    pub(crate) fn take_from_slice(slice: &mut [u8]) -> Self {
+        Self(Buffer::take_from_slice(slice))
+    }
+}
+
+impl<'a> Deref for Pkcs8Pem<'a> {
+    type Target = Buffer<'a, pem_type::Pkcs8PemType>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Trait for types that can be serialized into a DER format.
+pub trait AsPEM<T> {
+    /// Serializes into a PEM format.
+    ///
+    /// # Errors
+    /// Returns Unspecified if serialization fails.
+    fn as_pem(&self) -> Result<T, crate::error::Unspecified>;
 }
