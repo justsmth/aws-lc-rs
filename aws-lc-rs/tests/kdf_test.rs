@@ -5,14 +5,12 @@
 
 use std::error::Error;
 
+use aws_lc_rs::unstable::kdf::{KbkdfAlgorithmId, SskdfAlgorithmId};
 use aws_lc_rs::{
     test, test_file,
     unstable::kdf::{
-        kbkdf_ctr_hmac, sskdf_digest, sskdf_hmac, KbkdfCtrHmacAlgorithm, SskdfDigestAlgorithm,
-        SskdfHmacAlgorithm, KBKDF_CTR_HMAC_SHA1, KBKDF_CTR_HMAC_SHA224, KBKDF_CTR_HMAC_SHA256,
-        KBKDF_CTR_HMAC_SHA384, KBKDF_CTR_HMAC_SHA512, SSKDF_DIGEST_SHA1, SSKDF_DIGEST_SHA224,
-        SSKDF_DIGEST_SHA256, SSKDF_DIGEST_SHA384, SSKDF_DIGEST_SHA512, SSKDF_HMAC_SHA1,
-        SSKDF_HMAC_SHA224, SSKDF_HMAC_SHA256, SSKDF_HMAC_SHA384, SSKDF_HMAC_SHA512,
+        get_kbkdf_algorithm, get_sskdf_digest_algorithm, get_sskdf_hmac_algorithm, kbkdf_ctr_hmac,
+        sskdf_digest, sskdf_hmac, KbkdfCtrHmacAlgorithm, SskdfDigestAlgorithm, SskdfHmacAlgorithm,
     },
 };
 
@@ -60,37 +58,40 @@ impl TryFrom<String> for Hash {
 
 impl From<Hash> for &'static SskdfHmacAlgorithm {
     fn from(value: Hash) -> Self {
-        match value {
-            Hash::Sha1 => &SSKDF_HMAC_SHA1,
-            Hash::Sha224 => &SSKDF_HMAC_SHA224,
-            Hash::Sha256 => &SSKDF_HMAC_SHA256,
-            Hash::Sha384 => &SSKDF_HMAC_SHA384,
-            Hash::Sha512 => &SSKDF_HMAC_SHA512,
-        }
+        get_sskdf_hmac_algorithm(match value {
+            Hash::Sha1 => SskdfAlgorithmId::HmacSha1,
+            Hash::Sha224 => SskdfAlgorithmId::HmacSha224,
+            Hash::Sha256 => SskdfAlgorithmId::HmacSha256,
+            Hash::Sha384 => SskdfAlgorithmId::HmacSha384,
+            Hash::Sha512 => SskdfAlgorithmId::HmacSha512,
+        })
+            .unwrap()
     }
 }
 
 impl From<Hash> for &'static SskdfDigestAlgorithm {
     fn from(value: Hash) -> Self {
-        match value {
-            Hash::Sha1 => &SSKDF_DIGEST_SHA1,
-            Hash::Sha224 => &SSKDF_DIGEST_SHA224,
-            Hash::Sha256 => &SSKDF_DIGEST_SHA256,
-            Hash::Sha384 => &SSKDF_DIGEST_SHA384,
-            Hash::Sha512 => &SSKDF_DIGEST_SHA512,
-        }
+        get_sskdf_digest_algorithm(match value {
+            Hash::Sha1 => SskdfAlgorithmId::DigestSha1,
+            Hash::Sha224 => SskdfAlgorithmId::DigestSha224,
+            Hash::Sha256 => SskdfAlgorithmId::DigestSha256,
+            Hash::Sha384 => SskdfAlgorithmId::DigestSha384,
+            Hash::Sha512 => SskdfAlgorithmId::DigestSha512,
+        })
+            .unwrap()
     }
 }
 
 impl From<Hash> for &'static KbkdfCtrHmacAlgorithm {
     fn from(value: Hash) -> Self {
-        match value {
-            Hash::Sha1 => &KBKDF_CTR_HMAC_SHA1,
-            Hash::Sha224 => &KBKDF_CTR_HMAC_SHA224,
-            Hash::Sha256 => &KBKDF_CTR_HMAC_SHA256,
-            Hash::Sha384 => &KBKDF_CTR_HMAC_SHA384,
-            Hash::Sha512 => &KBKDF_CTR_HMAC_SHA512,
-        }
+        get_kbkdf_algorithm(match value {
+            Hash::Sha1 => KbkdfAlgorithmId::CtrHmacSha1,
+            Hash::Sha224 => KbkdfAlgorithmId::CtrHmacSha224,
+            Hash::Sha256 => KbkdfAlgorithmId::CtrHmacSha256,
+            Hash::Sha384 => KbkdfAlgorithmId::CtrHmacSha384,
+            Hash::Sha512 => KbkdfAlgorithmId::CtrHmacSha512,
+        })
+            .unwrap()
     }
 }
 
@@ -156,8 +157,6 @@ fn assert_sskdf_hmac(
 #[test]
 fn hkdf_ctr_hmac() {
     test::run(test_file!("data/kbkdf_counter.txt"), |_section, tc| {
-        const EMPTY_SLICE: &[u8] = &[];
-
         let hash: Hash = tc.consume_string("HASH").try_into().unwrap();
         let secret = tc.consume_bytes("SECRET");
         let info = tc.consume_bytes("INFO");
