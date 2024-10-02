@@ -50,49 +50,8 @@
 use core::fmt::Debug;
 
 use crate::kem::Algorithm;
+pub use crate::kem::{ML_KEM_1024, ML_KEM_512, ML_KEM_768};
 use aws_lc::{NID_KYBER1024_R3, NID_KYBER512_R3, NID_KYBER768_R3};
-
-const ML_KEM_512_SHARED_SECRET_LENGTH: usize = 32;
-const ML_KEM_512_PUBLIC_KEY_LENGTH: usize = 800;
-const ML_KEM_512_SECRET_KEY_LENGTH: usize = 1632;
-const ML_KEM_512_CIPHERTEXT_LENGTH: usize = 768;
-
-const ML_KEM_768_SHARED_SECRET_LENGTH: usize = 32;
-const ML_KEM_768_PUBLIC_KEY_LENGTH: usize = 1184;
-const ML_KEM_768_SECRET_KEY_LENGTH: usize = 2400;
-const ML_KEM_768_CIPHERTEXT_LENGTH: usize = 1088;
-
-const ML_KEM_1024_SHARED_SECRET_LENGTH: usize = 32;
-const ML_KEM_1024_PUBLIC_KEY_LENGTH: usize = 1568;
-const ML_KEM_1024_SECRET_KEY_LENGTH: usize = 3168;
-const ML_KEM_1024_CIPHERTEXT_LENGTH: usize = 1568;
-
-/// NIST FIPS 203 ML-KEM-512 algorithm.
-pub const ML_KEM_512: Algorithm<crate::kem::AlgorithmId> = Algorithm {
-    id: crate::kem::AlgorithmId::MlKem512,
-    decapsulate_key_size: ML_KEM_512_SECRET_KEY_LENGTH,
-    encapsulate_key_size: ML_KEM_512_PUBLIC_KEY_LENGTH,
-    ciphertext_size: ML_KEM_512_CIPHERTEXT_LENGTH,
-    shared_secret_size: ML_KEM_512_SHARED_SECRET_LENGTH,
-};
-
-/// NIST FIPS 203 ML-KEM-768 algorithm.
-pub const ML_KEM_768: Algorithm<crate::kem::AlgorithmId> = Algorithm {
-    id: crate::kem::AlgorithmId::MlKem768,
-    decapsulate_key_size: ML_KEM_768_SECRET_KEY_LENGTH,
-    encapsulate_key_size: ML_KEM_768_PUBLIC_KEY_LENGTH,
-    ciphertext_size: ML_KEM_768_CIPHERTEXT_LENGTH,
-    shared_secret_size: ML_KEM_768_SHARED_SECRET_LENGTH,
-};
-
-/// NIST FIPS 203 ML-KEM-1024 algorithm.
-pub const ML_KEM_1024: Algorithm<crate::kem::AlgorithmId> = Algorithm {
-    id: crate::kem::AlgorithmId::MlKem1024,
-    decapsulate_key_size: ML_KEM_1024_SECRET_KEY_LENGTH,
-    encapsulate_key_size: ML_KEM_1024_PUBLIC_KEY_LENGTH,
-    ciphertext_size: ML_KEM_1024_CIPHERTEXT_LENGTH,
-    shared_secret_size: ML_KEM_1024_SHARED_SECRET_LENGTH,
-};
 
 // Key lengths defined as stated on the CRYSTALS website:
 // https://pq-crystals.org/kyber/
@@ -195,10 +154,7 @@ mod tests {
         kem::{DecapsulationKey, EncapsulationKey},
     };
 
-    use super::{
-        get_algorithm, AlgorithmId, KYBER1024_R3, KYBER512_R3, KYBER768_R3, ML_KEM_1024,
-        ML_KEM_512, ML_KEM_768,
-    };
+    use super::{get_algorithm, AlgorithmId, KYBER1024_R3, KYBER512_R3, KYBER768_R3};
 
     #[test]
     fn test_kem_serialize() {

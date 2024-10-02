@@ -467,6 +467,33 @@ fn kem_key_generate(nid: i32) -> Result<LcPtr<EVP_PKEY>, Unspecified> {
     Ok(LcPtr::new(key_raw)?)
 }
 
+/// NIST FIPS 203 ML-KEM-512 algorithm.
+pub const ML_KEM_512: Algorithm<crate::kem::AlgorithmId> = Algorithm {
+    id: AlgorithmId::MlKem512,
+    decapsulate_key_size: ML_KEM_512_SECRET_KEY_LENGTH,
+    encapsulate_key_size: ML_KEM_512_PUBLIC_KEY_LENGTH,
+    ciphertext_size: ML_KEM_512_CIPHERTEXT_LENGTH,
+    shared_secret_size: ML_KEM_512_SHARED_SECRET_LENGTH,
+};
+
+/// NIST FIPS 203 ML-KEM-768 algorithm.
+pub const ML_KEM_768: Algorithm<AlgorithmId> = Algorithm {
+    id: AlgorithmId::MlKem768,
+    decapsulate_key_size: ML_KEM_768_SECRET_KEY_LENGTH,
+    encapsulate_key_size: ML_KEM_768_PUBLIC_KEY_LENGTH,
+    ciphertext_size: ML_KEM_768_CIPHERTEXT_LENGTH,
+    shared_secret_size: ML_KEM_768_SHARED_SECRET_LENGTH,
+};
+
+/// NIST FIPS 203 ML-KEM-1024 algorithm.
+pub const ML_KEM_1024: Algorithm<AlgorithmId> = Algorithm {
+    id: AlgorithmId::MlKem1024,
+    decapsulate_key_size: ML_KEM_1024_SECRET_KEY_LENGTH,
+    encapsulate_key_size: ML_KEM_1024_PUBLIC_KEY_LENGTH,
+    ciphertext_size: ML_KEM_1024_CIPHERTEXT_LENGTH,
+    shared_secret_size: ML_KEM_1024_SHARED_SECRET_LENGTH,
+};
+
 #[cfg(test)]
 mod tests {
     use crate::error::KeyRejected;
@@ -600,3 +627,16 @@ mod tests {
         );
     }
 }
+
+pub(crate) const ML_KEM_512_SHARED_SECRET_LENGTH: usize = 32;
+pub(crate) const ML_KEM_512_PUBLIC_KEY_LENGTH: usize = 800;
+pub(crate) const ML_KEM_512_SECRET_KEY_LENGTH: usize = 1632;
+pub(crate) const ML_KEM_512_CIPHERTEXT_LENGTH: usize = 768;
+pub(crate) const ML_KEM_768_SHARED_SECRET_LENGTH: usize = 32;
+pub(crate) const ML_KEM_768_PUBLIC_KEY_LENGTH: usize = 1184;
+pub(crate) const ML_KEM_768_SECRET_KEY_LENGTH: usize = 2400;
+pub(crate) const ML_KEM_768_CIPHERTEXT_LENGTH: usize = 1088;
+pub(crate) const ML_KEM_1024_SHARED_SECRET_LENGTH: usize = 32;
+pub(crate) const ML_KEM_1024_PUBLIC_KEY_LENGTH: usize = 1568;
+pub(crate) const ML_KEM_1024_SECRET_KEY_LENGTH: usize = 3168;
+pub(crate) const ML_KEM_1024_CIPHERTEXT_LENGTH: usize = 1568;
