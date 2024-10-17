@@ -52,4 +52,17 @@ ci: format clippy msrv test coverage api-diff-pub
 readme:
 	cargo readme | tee README.md
 
-.PHONY: asan asan-fips asan-release ci clippy coverage coverage-fips test msrv clippy
+mirai-install:
+	rustup component add rust-src rust-std rustc-dev llvm-tools clippy rustfmt
+	rustup toolchain install nightly-2023-12-30
+	rm -rf ./tmp/MIRAI
+	mkdir -p ./tmp/MIRAI
+	git clone --depth 1 --branch v1.1.9 https://github.com/endorlabs/MIRAI.git ./tmp/MIRAI
+	cd ./tmp/MIRAI && cargo install --no-default-features --locked --force --path ./checker
+	rm -rf tmp/MIRAI
+
+mirai:
+	cargo +nightly-2023-12-30 mirai
+
+
+.PHONY: asan asan-fips asan-release ci clippy coverage coverage-fips test msrv clippy mirai-install mirai
