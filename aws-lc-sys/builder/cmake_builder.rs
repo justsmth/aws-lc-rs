@@ -97,21 +97,25 @@ impl CmakeBuilder {
         );
         let mut cflags = OsString::new();
         let compiler = cc_builder.prepare_builder().get_compiler();
-        let args = compiler.args();
-        for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
-                cflags.push(" ");
-            }
-            if let Some(arg) = arg.to_str() {
-                if arg.contains(' ') {
-                    cflags.push("\"");
-                    cflags.push(arg);
-                    cflags.push("\"");
+
+        //  `clang-cl`
+        if target_env() != "msvc" || compiler.is_like_msvc() {
+            let args = compiler.args();
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    cflags.push(" ");
+                }
+                if let Some(arg) = arg.to_str() {
+                    if arg.contains(' ') {
+                        cflags.push("\"");
+                        cflags.push(arg);
+                        cflags.push("\"");
+                    } else {
+                        cflags.push(arg);
+                    }
                 } else {
                     cflags.push(arg);
                 }
-            } else {
-                cflags.push(arg);
             }
         }
 
@@ -272,6 +276,14 @@ impl CmakeBuilder {
             }
             _ => {}
         }
+
+        if let Ok(cc) = env::var("CC") {
+            cmake_cfg.define("CMAKE_C_COMPILER", cc);
+        }
+        if let Ok(cxx) = env::var("CXX") {
+            cmake_cfg.define("CMAKE_CXX_COMPILER", cxx);
+        }
+
         if use_prebuilt_nasm() {
             emit_warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
             emit_warning("!!!   Using pre-built NASM binaries   !!!");

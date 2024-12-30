@@ -82,6 +82,19 @@ impl Default for PlatformConfig {
     }
 }
 
+// Test with the CC environment variable set:
+// ```
+//   export CC='C:\Program Files\LLVM\bin\clang-cl'
+// ```
+fn describe_compiler(compiler: &cc::Tool) {
+    println!("### Describing Compiler");
+    println!("TARGET_ENV = msvc: {}", target_env() == "msvc");
+    println!("Compiler like MSVC: {}", compiler.is_like_msvc());
+    println!("Compiler like CLANG: {}", compiler.is_like_clang());
+    println!("Compiler like GNU: {}", compiler.is_like_gnu());
+    println!("###");
+}
+
 impl CcBuilder {
     pub(crate) fn new(
         manifest_dir: PathBuf,
@@ -102,6 +115,8 @@ impl CcBuilder {
         cc_build.out_dir(&self.out_dir).cpp(false);
 
         let compiler = cc_build.get_compiler();
+        describe_compiler(&compiler);
+        panic!("stop in create_builder");
         if compiler.is_like_gnu() || compiler.is_like_clang() {
             cc_build.flag("-Wno-unused-parameter");
             if target_os() == "linux"
