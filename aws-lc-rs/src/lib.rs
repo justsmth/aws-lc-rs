@@ -195,6 +195,7 @@ pub mod iv;
 pub mod kdf;
 #[allow(clippy::module_name_repetitions)]
 pub mod kem;
+mod pq;
 mod ptr;
 pub mod rsa;
 pub mod tls_prf;
