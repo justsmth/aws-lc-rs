@@ -10,5 +10,7 @@ pushd "${SRC_DIR}"
 
 cargo test -p aws-lc-rs
 cargo clean
+cargo test -p aws-lc-rs --no-default-features --features fips
+cargo clean
 
 popd # ${SRC_DIR}

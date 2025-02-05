@@ -14,7 +14,9 @@ RUN apk add \
 	cargo \
 	curl \
 	cmake \
-	openssl-dev
+	openssl-dev \
+	go \
+	perl
 
 ARG UID
 RUN adduser -u $UID -S -s /bin/sh -G abuild satoshi
