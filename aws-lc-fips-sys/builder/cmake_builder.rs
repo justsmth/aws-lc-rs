@@ -1,12 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
+use crate::cc_builder::CcBuilder;
 use crate::OutputLib::{Crypto, RustWrapper, Ssl};
-use crate::{
-    cargo_env, effective_target, emit_rustc_cfg, emit_warning, execute_command,
-    is_cpu_jitter_entropy, is_no_asm, option_env, target_arch, target_env, target_family,
-    target_os, target_underscored, target_vendor, OutputLibType, TestCommandResult,
-};
+use crate::{cargo_env, effective_target, emit_rustc_cfg, emit_warning, execute_command, get_crate_cflags, is_cpu_jitter_entropy, is_crt_static, is_no_asm, option_env, set_env_for_target, target_arch, target_env, target_os, target_underscored, target_vendor, OutputLibType, TestCommandResult};
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
@@ -60,13 +57,6 @@ fn find_cmake_command() -> Option<OsString> {
     }
 }
 
-fn has_target_cpu_optimization() -> bool {
-    matches!(
-        target_arch().as_str(),
-        "x86_64" | "x86" | "aarch64" | "arm" | "powerpc64"
-    )
-}
-
 impl CmakeBuilder {
     pub(crate) fn new(
         manifest_dir: PathBuf,
@@ -88,6 +78,20 @@ impl CmakeBuilder {
 
     fn get_cmake_config(&self) -> cmake::Config {
         cmake::Config::new(&self.manifest_dir)
+    }
+
+    fn apply_universal_build_options<'a>(
+        &self,
+        cmake_cfg: &'a mut cmake::Config,
+    ) -> &'a cmake::Config {
+        // Use the compiler options identified by CcBuilder
+        let cc_builder = CcBuilder::new(self.manifest_dir.clone());
+        let cc_build = cc::Build::new();
+        let (is_like_msvc, build_options) = cc_builder.collect_universal_build_options(&cc_build);
+        for option in &build_options {
+            option.apply_cmake(cmake_cfg, is_like_msvc);
+        }
+        cmake_cfg
     }
 
     const GOCACHE_DIR_NAME: &'static str = "go-cache";
@@ -112,59 +116,18 @@ impl CmakeBuilder {
         }
 
         if let Some(cc) = option_env!("AWS_LC_FIPS_SYS_CC") {
-            env::set_var("CC", cc);
-            emit_warning(&format!("Setting CC: {cc}"));
+            set_env_for_target("CC", cc);
         }
         if let Some(cxx) = option_env!("AWS_LC_FIPS_SYS_CXX") {
-            env::set_var("CXX", cxx);
-            emit_warning(&format!("Setting CXX: {cxx}"));
+            set_env_for_target("CXX", cxx);
         }
 
-        let cc_build = cc::Build::new();
         let opt_level = cargo_env("OPT_LEVEL");
-        if opt_level.ne("0") {
-            if opt_level.eq("1") || opt_level.eq("2") {
-                cmake_cfg.define("CMAKE_BUILD_TYPE", "relwithdebinfo");
-            } else {
-                if opt_level.eq("s") || opt_level.eq("z") {
-                    cmake_cfg.define("CMAKE_BUILD_TYPE", "minsizerel");
-                } else {
-                    cmake_cfg.define("CMAKE_BUILD_TYPE", "release");
-                }
-                // TODO: Due to the nature of the FIPS build (e.g., its dynamic generation of
-                // assembly files and its custom compilation commands within CMake), not all
-                // source paths are stripped from the resulting binary.
-                emit_warning(
-                    "NOTICE: Build environment source paths might be visible in release binary.",
-                );
-                let parent_dir = self.manifest_dir.parent();
-                if parent_dir.is_some() && (target_family() == "unix" || target_env() == "gnu") {
-                    let parent_dir = parent_dir.unwrap();
-
-                    let flag = format!("\"-ffile-prefix-map={}=\"", parent_dir.display());
-                    if let Ok(true) = cc_build.is_flag_supported(&flag) {
-                        emit_warning(&format!("Using flag: {}", &flag));
-                        cmake_cfg.asmflag(&flag);
-                        cmake_cfg.cflag(&flag);
-                    } else {
-                        let flag = format!("\"-fdebug-prefix-map={}=\"", parent_dir.display());
-                        if let Ok(true) = cc_build.is_flag_supported(&flag) {
-                            emit_warning(&format!("Using flag: {}", &flag));
-                            cmake_cfg.asmflag(&flag);
-                            cmake_cfg.cflag(&flag);
-                        }
-                    }
-                }
-            }
-        } else if target_os() == "windows" {
+        if opt_level.eq("0") && target_os() == "windows" {
             // The Windows/FIPS build rejects "debug" profile
-            // https://github.com/aws/aws-lc/blob/main/CMakeLists.txt#L656
+            // https://github.com/aws/aws-lc/blob/main/CMakeLists.txt#L745
             cmake_cfg.define("CMAKE_BUILD_TYPE", "relwithdebinfo");
-        } else {
-            cmake_cfg.define("CMAKE_BUILD_TYPE", "debug");
         }
-
-        Self::verify_compiler_support(&cc_build.get_compiler());
 
         if let Some(prefix) = &self.build_prefix {
             cmake_cfg.define("BORINGSSL_PREFIX", format!("{prefix}_"));
@@ -191,43 +154,58 @@ impl CmakeBuilder {
             } else {
                 panic!("AWS_LC_SYS_NO_ASM only allowed for debug builds!")
             }
-        } else if !has_target_cpu_optimization() {
-            emit_warning(&format!(
-                "Assembly optimizations not available for target arch: {}.",
-                target_arch()
-            ));
-            // TODO: This should not be needed once resolved upstream
-            // See: https://github.com/aws/aws-lc-rs/issues/655
-            cmake_cfg.define("OPENSSL_NO_ASM", "1");
         }
 
         if cfg!(feature = "asan") {
-            env::set_var("CC", "clang");
-            env::set_var("CXX", "clang++");
-            env::set_var("ASM", "clang");
+            set_env_for_target("CC", "clang");
+            set_env_for_target("CXX", "clang++");
+            set_env_for_target("ASM", "clang");
 
             cmake_cfg.define("ASAN", "1");
         }
 
+        if target_env() == "ohos" {
+            Self::configure_open_harmony(&mut cmake_cfg, get_crate_cflags());
+            return cmake_cfg;
+        }
+
+        let cflags = get_crate_cflags();
+        if !cflags.is_empty() {
+            emit_warning(&format!(
+                "AWS_LC_SYS_CFLAGS found. Setting CFLAGS: '{cflags}'"
+            ));
+            set_env_for_target("CFLAGS", cflags);
+        }
+
+        // cmake-rs has logic that strips Optimization/Debug options that are passed via CFLAGS:
+        // https://github.com/rust-lang/cmake-rs/issues/240
+        // This breaks build configurations that generate warnings when optimizations
+        // are disabled.
+        Self::preserve_cflag_optimization_flags(&mut cmake_cfg);
+
+        self.apply_universal_build_options(&mut cmake_cfg);
+
         // Allow environment to specify CMake toolchain.
-        if let Some(toolchain) = option_env("CMAKE_TOOLCHAIN_FILE").or(option_env(format!(
-            "CMAKE_TOOLCHAIN_FILE_{}",
-            target_underscored()
-        ))) {
+        let toolchain_var_name = format!("CMAKE_TOOLCHAIN_FILE_{}", target_underscored());
+        if let Some(toolchain) =
+            option_env(&toolchain_var_name).or(option_env("CMAKE_TOOLCHAIN_FILE"))
+        {
             emit_warning(&format!(
                 "CMAKE_TOOLCHAIN_FILE environment variable set: {toolchain}"
             ));
             return cmake_cfg;
         }
 
-        if target_vendor() == "apple" {
-            let disable_warnings: [&str; 2] =
-                ["-Wno-overriding-t-option", "-Wno-overriding-option"];
-            for disabler in disable_warnings {
-                if let Ok(true) = cc_build.is_flag_supported(disabler) {
-                    cmake_cfg.cflag(disabler);
-                }
-            }
+        Self::verify_compiler_support(&cc::Build::new().get_compiler());
+
+        // See issue: https://github.com/aws/aws-lc-rs/issues/453
+        if target_os() == "windows" {
+            self.configure_windows(&mut cmake_cfg);
+        }
+
+        // If the build environment vendor is Apple
+        #[cfg(target_vendor = "apple")]
+        {
             if target_arch() == "aarch64" {
                 cmake_cfg.define("CMAKE_OSX_ARCHITECTURES", "arm64");
                 cmake_cfg.define("CMAKE_SYSTEM_PROCESSOR", "arm64");
@@ -236,30 +214,99 @@ impl CmakeBuilder {
                 cmake_cfg.define("CMAKE_OSX_ARCHITECTURES", "x86_64");
                 cmake_cfg.define("CMAKE_SYSTEM_PROCESSOR", "x86_64");
             }
-            if target_os().trim() == "ios" {
-                cmake_cfg.define("CMAKE_SYSTEM_NAME", "iOS");
-                if effective_target().trim().ends_with("-ios-sim") {
-                    cmake_cfg.define("CMAKE_OSX_SYSROOT", "iphonesimulator");
-                }
-            }
         }
 
-        if target_os() == "windows" {
-            cmake_cfg.generator("Ninja");
-            let env_map = self
-                .collect_vcvarsall_bat()
-                .map_err(|x| panic!("{}", x))
-                .unwrap();
-            for (key, value) in env_map {
-                cmake_cfg.env(key, value);
-            }
+        if target_os() == "android" {
+            self.configure_android(&mut cmake_cfg);
         }
 
-        if target_env() == "ohos" {
-            Self::configure_open_harmony(&mut cmake_cfg);
+        if target_vendor() == "apple" && target_os().to_lowercase() == "ios" {
+            cmake_cfg.define("CMAKE_SYSTEM_NAME", "iOS");
+            if effective_target().ends_with("-ios-sim") || target_arch() == "x86_64" {
+                cmake_cfg.define("CMAKE_OSX_SYSROOT", "iphonesimulator");
+            } else {
+                cmake_cfg.define("CMAKE_OSX_SYSROOT", "iphoneos");
+            }
+            cmake_cfg.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
         }
 
         cmake_cfg
+    }
+
+    fn preserve_cflag_optimization_flags(cmake_cfg: &mut cmake::Config) {
+        if let Ok(cflags) = env::var("CFLAGS") {
+            let split = cflags.split_whitespace();
+            for arg in split {
+                if arg.starts_with("-O") || arg.starts_with("/O") {
+                    emit_warning(&format!("Preserving optimization flag: {arg}"));
+                    cmake_cfg.cflag(arg);
+                }
+            }
+        }
+    }
+
+    #[allow(clippy::unused_self)]
+    fn configure_android(&self, _cmake_cfg: &mut cmake::Config) {
+        // If we leave CMAKE_SYSTEM_PROCESSOR unset, then cmake-rs should handle properly setting
+        // CMAKE_SYSTEM_NAME and CMAKE_SYSTEM_PROCESSOR:
+        // https://github.com/rust-lang/cmake-rs/blob/b689783b5448966e810d515c798465f2e0ab56fd/src/lib.rs#L450-L499
+
+        // Log relevant environment variables.
+        if let Some(value) = option_env("ANDROID_NDK_ROOT") {
+            emit_warning(&format!("Found ANDROID_NDK_ROOT={value}"));
+        } else {
+            emit_warning("ANDROID_NDK_ROOT not set.");
+        }
+        if let Some(value) = option_env("ANDROID_NDK") {
+            emit_warning(&format!("Found ANDROID_NDK={value}"));
+        } else {
+            emit_warning("ANDROID_NDK not set.");
+        }
+        if let Some(value) = option_env("ANDROID_STANDALONE_TOOLCHAIN") {
+            emit_warning(&format!("Found ANDROID_STANDALONE_TOOLCHAIN={value}"));
+        } else {
+            emit_warning("ANDROID_STANDALONE_TOOLCHAIN not set.");
+        }
+    }
+
+    fn configure_windows(&self, cmake_cfg: &mut cmake::Config) {
+        cmake_cfg.generator("Ninja");
+        let env_map = self
+            .collect_vcvarsall_bat()
+            .map_err(|x| panic!("{}", x))
+            .unwrap();
+        for (key, value) in env_map {
+            cmake_cfg.env(key, value);
+        }
+        match (target_env().as_str(), target_arch().as_str()) {
+            ("msvc", "aarch64") => {
+                cmake_cfg.generator_toolset(format!(
+                    "ClangCL{}",
+                    if cfg!(target_arch = "x86_64") {
+                        ",host=x64"
+                    } else {
+                        ""
+                    }
+                ));
+                cmake_cfg.static_crt(is_crt_static());
+                cmake_cfg.define("CMAKE_GENERATOR_PLATFORM", "ARM64");
+                cmake_cfg.define("CMAKE_SYSTEM_NAME", "Windows");
+                cmake_cfg.define("CMAKE_SYSTEM_PROCESSOR", "ARM64");
+            }
+            ("msvc", "x86") => {
+                cmake_cfg.static_crt(is_crt_static());
+                cmake_cfg.define("CMAKE_SYSTEM_NAME", "");
+                cmake_cfg.define("CMAKE_SYSTEM_PROCESSOR", "");
+            }
+            ("msvc", _) => {
+                cmake_cfg.static_crt(is_crt_static());
+            }
+            ("gnu", "x86") => {
+                cmake_cfg.define("CMAKE_SYSTEM_NAME", "Windows");
+                cmake_cfg.define("CMAKE_SYSTEM_PROCESSOR", "x86");
+            }
+            _ => {}
+        }
     }
 
     fn verify_compiler_support(compiler: &cc::Tool) -> Option<bool> {
@@ -312,45 +359,65 @@ impl CmakeBuilder {
         None
     }
 
-    fn configure_open_harmony(cmake_cfg: &mut cmake::Config) {
-        const OHOS_NDK_HOME: &str = "OHOS_NDK_HOME";
-        if let Ok(ndk) = env::var(OHOS_NDK_HOME) {
-            cmake_cfg.define(
-                "CMAKE_TOOLCHAIN_FILE",
-                format!("{ndk}/native/build/cmake/ohos.toolchain.cmake"),
-            );
-            let mut cflags = vec!["-Wno-unused-command-line-argument"];
-            let mut asmflags = vec![];
-            match effective_target().as_str() {
-                "aarch64-unknown-linux-ohos" => {}
-                "armv7-unknown-linux-ohos" => {
-                    const ARM7_FLAGS: [&str; 6] = [
-                        "-march=armv7-a",
-                        "-mfloat-abi=softfp",
-                        "-mtune=generic-armv7-a",
-                        "-mthumb",
-                        "-mfpu=neon",
-                        "-DHAVE_NEON",
-                    ];
-                    cflags.extend(ARM7_FLAGS);
-                    asmflags.extend(ARM7_FLAGS);
-                }
-                "x86_64-unknown-linux-ohos" => {
-                    const X86_64_FLAGS: [&str; 3] = ["-msse4.1", "-DHAVE_NEON_X86", "-DHAVE_NEON"];
-                    cflags.extend(X86_64_FLAGS);
-                    asmflags.extend(X86_64_FLAGS);
-                }
-                ohos_target => {
-                    emit_warning(format!("Target: {ohos_target} is not support yet!").as_str());
-                }
+    fn configure_open_harmony(cmake_cfg: &mut cmake::Config, crate_cflags: &str) {
+        set_env_for_target("CFLAGS", crate_cflags);
+        let mut cflags = vec!["-Wno-unused-command-line-argument"];
+        let mut asmflags = vec![];
+
+        let toolchain_var_name = format!("CMAKE_TOOLCHAIN_FILE_{}", target_underscored());
+        // If a toolchain is not specified by the environment
+        if option_env(&toolchain_var_name)
+            .or(option_env("CMAKE_TOOLCHAIN_FILE"))
+            .is_none()
+        {
+            if let Ok(ndk) = env::var("OHOS_NDK_HOME") {
+                set_env_for_target(
+                    toolchain_var_name,
+                    format!("{ndk}/native/build/cmake/ohos.toolchain.cmake"),
+                );
+            } else if let Ok(sdk) = env::var("OHOS_SDK_NATIVE") {
+                set_env_for_target(
+                    toolchain_var_name,
+                    format!("{sdk}/build/cmake/ohos.toolchain.cmake"),
+                );
+            } else {
+                emit_warning(
+                    "Neither OHOS_NDK_HOME nor OHOS_SDK_NATIVE are set! No toolchain found.",
+                );
             }
-            cmake_cfg
-                .cflag(cflags.join(" ").as_str())
-                .cxxflag(cflags.join(" ").as_str())
-                .asmflag(asmflags.join(" ").as_str());
-        } else {
-            emit_warning(format!("{OHOS_NDK_HOME} not set!").as_str());
         }
+
+        match effective_target().as_str() {
+            "aarch64-unknown-linux-ohos" => {
+                cmake_cfg.define("OHOS_ARCH", "arm64-v8a");
+            }
+            "armv7-unknown-linux-ohos" => {
+                const ARM7_FLAGS: [&str; 6] = [
+                    "-march=armv7-a",
+                    "-mfloat-abi=softfp",
+                    "-mtune=generic-armv7-a",
+                    "-mthumb",
+                    "-mfpu=neon",
+                    "-DHAVE_NEON",
+                ];
+                cflags.extend(ARM7_FLAGS);
+                asmflags.extend(ARM7_FLAGS);
+                cmake_cfg.define("OHOS_ARCH", "armeabi-v7a");
+            }
+            "x86_64-unknown-linux-ohos" => {
+                const X86_64_FLAGS: [&str; 3] = ["-msse4.1", "-DHAVE_NEON_X86", "-DHAVE_NEON"];
+                cflags.extend(X86_64_FLAGS);
+                asmflags.extend(X86_64_FLAGS);
+                cmake_cfg.define("OHOS_ARCH", "x86_64");
+            }
+            ohos_target => {
+                emit_warning(format!("Target: {ohos_target} is not support yet!").as_str());
+            }
+        }
+        cmake_cfg
+            .cflag(cflags.join(" ").as_str())
+            .cxxflag(cflags.join(" ").as_str())
+            .asmflag(asmflags.join(" ").as_str());
     }
 
     fn build_rust_wrapper(&self) -> PathBuf {
@@ -393,20 +460,20 @@ impl crate::Builder for CmakeBuilder {
             eprintln!("Missing dependency: perl is required for FIPS.");
             missing_dependency = true;
         }
-        if target_os() == "windows"
-            && target_arch() == "x86_64"
-            && !test_nasm_command()
-            && !is_no_asm()
-        {
-            eprintln!(
-                "Consider setting `AWS_LC_FIPS_SYS_NO_ASM` in the environment for development builds.\
-            See User Guide about the limitations: https://aws.github.io/aws-lc-rs/index.html"
-            );
-            eprintln!("Missing dependency: nasm is required for FIPS.");
-            missing_dependency = true;
+        if target_os() == "windows" {
+            if target_arch() == "x86_64" {
+                if !is_no_asm() && !test_nasm_command() {
+                    eprintln!(
+                        "NASM not found in the build environment. Please install NASM.\
+                See User Guide: https://aws.github.io/aws-lc-rs/index.html"
+                    );
+                    eprintln!("Missing dependency: nasm");
+                    missing_dependency = true;
+                }
+            }
         }
         if let Some(cmake_cmd) = find_cmake_command() {
-            env::set_var("CMAKE", cmake_cmd);
+            set_env_for_target("CMAKE", cmake_cmd);
         } else {
             eprintln!("Missing dependency: cmake");
             missing_dependency = true;

@@ -5,9 +5,9 @@ use crate::cc_builder::CcBuilder;
 use crate::OutputLib::{Crypto, RustWrapper, Ssl};
 use crate::{
     allow_prebuilt_nasm, cargo_env, effective_target, emit_warning, execute_command,
-    get_crate_cflags, is_crt_static, is_no_asm, is_no_pregenerated_src, option_env, target_arch,
-    target_env, target_os, target_underscored, target_vendor, test_nasm_command, use_prebuilt_nasm,
-    OutputLibType,
+    get_crate_cflags, is_crt_static, is_no_asm, is_no_pregenerated_src, option_env,
+    set_env_for_target, target_arch, target_env, target_os, target_vendor, test_nasm_command,
+    use_prebuilt_nasm, OutputLibType,
 };
 use std::env;
 use std::ffi::OsString;
@@ -96,6 +96,15 @@ impl CmakeBuilder {
             cmake_cfg.define("BUILD_SHARED_LIBS", "0");
         }
 
+        if let Some(cc) = option_env!("AWS_LC_SYS_CC") {
+            set_env_for_target("CC", cc);
+            emit_warning(&format!("Setting CC: {cc}"));
+        }
+        if let Some(cxx) = option_env!("AWS_LC_SYS_CXX") {
+            set_env_for_target("CXX", cxx);
+            emit_warning(&format!("Setting CXX: {cxx}"));
+        }
+
         if let Some(prefix) = &self.build_prefix {
             cmake_cfg.define("BORINGSSL_PREFIX", format!("{prefix}_"));
             let include_path = self.manifest_dir.join("generated-include");
@@ -132,9 +141,9 @@ impl CmakeBuilder {
         }
 
         if cfg!(feature = "asan") {
-            env::set_var("CC", "clang");
-            env::set_var("CXX", "clang++");
-            env::set_var("ASM", "clang");
+            set_env_for_target("CC", "clang");
+            set_env_for_target("CXX", "clang++");
+            set_env_for_target("ASM", "clang");
 
             cmake_cfg.define("ASAN", "1");
         }
@@ -149,7 +158,7 @@ impl CmakeBuilder {
             emit_warning(&format!(
                 "AWS_LC_SYS_CFLAGS found. Setting CFLAGS: '{cflags}'"
             ));
-            env::set_var("CFLAGS", cflags);
+            set_env_for_target("CFLAGS", cflags);
         }
 
         // cmake-rs has logic that strips Optimization/Debug options that are passed via CFLAGS:
@@ -158,18 +167,15 @@ impl CmakeBuilder {
         // are disabled.
         Self::preserve_cflag_optimization_flags(&mut cmake_cfg);
 
+        self.apply_universal_build_options(&mut cmake_cfg);
+
         // Allow environment to specify CMake toolchain.
-        let toolchain_var_name = format!("CMAKE_TOOLCHAIN_FILE_{}", target_underscored());
-        if let Some(toolchain) =
-            option_env(&toolchain_var_name).or(option_env("CMAKE_TOOLCHAIN_FILE"))
-        {
+        if let Some(toolchain) = option_env("CMAKE_TOOLCHAIN_FILE") {
             emit_warning(&format!(
                 "CMAKE_TOOLCHAIN_FILE environment variable set: {toolchain}"
             ));
             return cmake_cfg;
         }
-        // We only consider compiler CFLAGS when no cmake toolchain is set
-        self.apply_universal_build_options(&mut cmake_cfg);
 
         // See issue: https://github.com/aws/aws-lc-rs/issues/453
         if target_os() == "windows" {
@@ -320,25 +326,21 @@ impl CmakeBuilder {
     }
 
     fn configure_open_harmony(cmake_cfg: &mut cmake::Config, crate_cflags: &str) {
-        env::set_var("CFLAGS", crate_cflags);
+        set_env_for_target("CFLAGS", crate_cflags);
         let mut cflags = vec!["-Wno-unused-command-line-argument"];
         let mut asmflags = vec![];
 
-        let toolchain_var_name = format!("CMAKE_TOOLCHAIN_FILE_{}", target_underscored());
         // If a toolchain is not specified by the environment
-        if option_env(&toolchain_var_name)
-            .or(option_env("CMAKE_TOOLCHAIN_FILE"))
-            .is_none()
-        {
-            if let Ok(ndk) = env::var("OHOS_NDK_HOME") {
-                env::set_var(
-                    toolchain_var_name,
-                    format!("{ndk}/native/build/cmake/ohos.toolchain.cmake"),
+        if option_env("CMAKE_TOOLCHAIN_FILE").is_none() {
+            if let Some(ndk) = option_env("OHOS_NDK_HOME") {
+                set_env_for_target(
+                    "CMAKE_TOOLCHAIN_FILE",
+                    &format!("{ndk}/native/build/cmake/ohos.toolchain.cmake"),
                 );
-            } else if let Ok(sdk) = env::var("OHOS_SDK_NATIVE") {
-                env::set_var(
-                    toolchain_var_name,
-                    format!("{sdk}/build/cmake/ohos.toolchain.cmake"),
+            } else if let Some(sdk) = option_env("OHOS_SDK_NATIVE") {
+                set_env_for_target(
+                    "CMAKE_TOOLCHAIN_FILE",
+                    &format!("{sdk}/build/cmake/ohos.toolchain.cmake"),
                 );
             } else {
                 emit_warning(
@@ -390,29 +392,33 @@ impl CmakeBuilder {
 impl crate::Builder for CmakeBuilder {
     fn check_dependencies(&self) -> Result<(), String> {
         let mut missing_dependency = false;
-        if target_os() == "windows" && target_arch() == "x86_64" {
-            if is_no_asm() && Some(true) == allow_prebuilt_nasm() {
-                eprintln!(
+        if target_os() == "windows" {
+            if target_arch() == "x86_64" {
+                if is_no_asm() && Some(true) == allow_prebuilt_nasm() {
+                    eprintln!(
                     "Build environment has both `AWS_LC_SYS_PREBUILT_NASM` and `AWS_LC_SYS_NO_ASM` set.\
                 Please remove one of these environment variables.
                 See User Guide: https://aws.github.io/aws-lc-rs/index.html"
                 );
-            }
-            if !is_no_asm() && !test_nasm_command() && !use_prebuilt_nasm() {
-                eprintln!(
+                }
+                if !is_no_asm() && !test_nasm_command() && !use_prebuilt_nasm() {
+                    eprintln!(
                     "Consider installing NASM or setting `AWS_LC_SYS_PREBUILT_NASM` in the build environment.\
                 See User Guide: https://aws.github.io/aws-lc-rs/index.html"
                 );
-                eprintln!("Missing dependency: nasm");
-                missing_dependency = true;
-            }
-            if target_arch() == "aarch64" && target_env() == "msvc" && !test_clang_cl_command() {
+                    eprintln!("Missing dependency: nasm");
+                    missing_dependency = true;
+                }
+            } else if target_arch() == "aarch64"
+                && target_env() == "msvc"
+                && !test_clang_cl_command()
+            {
                 eprintln!("Missing dependency: clang-cl");
                 missing_dependency = true;
             }
         }
         if let Some(cmake_cmd) = find_cmake_command() {
-            env::set_var("CMAKE", cmake_cmd);
+            set_env_for_target("CMAKE", cmake_cmd);
         } else {
             eprintln!("Missing dependency: cmake");
             missing_dependency = true;

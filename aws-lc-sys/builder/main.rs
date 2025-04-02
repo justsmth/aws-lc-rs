@@ -141,9 +141,16 @@ fn cargo_env<N: AsRef<str>>(name: N) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("missing env var {name:?}"))
 }
 fn option_env<N: AsRef<str>>(name: N) -> Option<String> {
-    let name = name.as_ref();
-    println!("cargo:rerun-if-env-changed={name}");
-    std::env::var(name).ok()
+    let env_var = name.as_ref();
+    let target = effective_target();
+    let target = target.replace('-', "_");
+    let target_env_var = format!("{target}_{env_var}");
+    println!("cargo:rerun-if-env-changed={}", env_var);
+    println!("cargo:rerun-if-env-changed={}", &target_env_var);
+
+    env::var(&target_env_var)
+        .or_else(|_| env::var(env_var))
+        .ok()
 }
 
 fn env_var_to_bool(name: &str) -> Option<bool> {
@@ -171,6 +178,21 @@ fn env_var_to_bool(name: &str) -> Option<bool> {
         eprintln!("Parsed: {name}=unknown");
     }
     None
+}
+
+fn set_env_for_target<K, V>(env_var: K, value: V)
+where
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    let target = effective_target();
+    let target = target.replace('-', "_");
+    let env_var = format!("{}_{target}", env_var.as_ref().to_str().unwrap());
+    env::set_var(&env_var, &value);
+    emit_warning(&format!(
+        "Setting {env_var}: {}",
+        value.as_ref().to_str().unwrap()
+    ));
 }
 
 impl Default for OutputLibType {
@@ -622,6 +644,10 @@ fn main() {
             let src_bindings_path = Path::new(&manifest_dir)
                 .join("src")
                 .join(format!("{}.rs", target_platform_prefix("crypto")));
+            emit_warning(&format!(
+                "Generating src bindings: {}",
+                &src_bindings_path.display()
+            ));
             if is_external_bindgen() {
                 invoke_external_bindgen(&manifest_dir, &prefix, &src_bindings_path).unwrap();
             } else {
@@ -791,8 +817,9 @@ fn invoke_external_bindgen(
     verify_bindgen()?;
 
     emit_warning(&format!(
-        "Generating bindings - external bindgen. Platform: {}",
-        effective_target()
+        "Generating bindings - external bindgen. Platform: '{}' Prefix: '{:?}'",
+        effective_target(),
+        prefix.as_ref().unwrap_or(&"".to_string())
     ));
 
     let options = BindingOptions {

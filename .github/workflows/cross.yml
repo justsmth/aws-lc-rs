@@ -27,15 +27,15 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - [ aarch64-linux-android, 0, 1 ]
+          - [ aarch64-linux-android, 1, 1 ]
           - [ aarch64-unknown-linux-gnu, 1, 1 ]
           - [ aarch64-unknown-linux-musl, 1, 1 ]
           - [ arm-linux-androideabi, 0, 0 ]
           - [ arm-unknown-linux-gnueabihf, 0, 0 ]
           - [ arm-unknown-linux-musleabi, 1, 0 ]
           - [ arm-unknown-linux-musleabihf, 1, 0 ]
-          - [ armv7-linux-androideabi, 0, 0 ]
-          - [ armv7-unknown-linux-gnueabihf, 0, 0 ]
+          - [ armv7-linux-androideabi, 1, 0 ]
+          - [ armv7-unknown-linux-gnueabihf, 1, 0 ]
           - [ i686-unknown-linux-gnu, 0, 1 ]
           - [ powerpc-unknown-linux-gnu, 1, 0 ]
           - [ powerpc64-unknown-linux-gnu, 1, 0 ]
@@ -43,7 +43,7 @@ jobs:
           - [ riscv64gc-unknown-linux-gnu, 0, 1 ]
           - [ s390x-unknown-linux-gnu, 0, 1 ]
           - [ x86_64-pc-windows-gnu, 0, 1 ]
-          - [ x86_64-unknown-linux-musl, 0, 1 ]
+          - [ x86_64-unknown-linux-musl, 1, 1 ]
           - [ x86_64-unknown-illumos, 0, 0 ]
     steps:
       - uses: actions/checkout@v3
