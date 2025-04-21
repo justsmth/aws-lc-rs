@@ -498,6 +498,7 @@ static mut AWS_LC_SYS_PREGENERATING_BINDINGS: bool = false;
 static mut AWS_LC_SYS_EXTERNAL_BINDGEN: bool = false;
 static mut AWS_LC_SYS_NO_ASM: bool = false;
 static mut AWS_LC_SYS_CFLAGS: String = String::new();
+static mut AWS_LC_SYS_CXXFLAGS: String = String::new();
 static mut AWS_LC_SYS_PREBUILT_NASM: Option<bool> = None;
 static mut AWS_LC_SYS_CMAKE_BUILDER: Option<bool> = None;
 static mut AWS_LC_SYS_NO_PREGENERATED_SRC: bool = false;
@@ -513,6 +514,7 @@ fn initialize() {
         AWS_LC_SYS_EXTERNAL_BINDGEN = env_crate_var_to_bool("EXTERNAL_BINDGEN").unwrap_or(false);
         AWS_LC_SYS_NO_ASM = env_crate_var_to_bool("NO_ASM").unwrap_or(false);
         AWS_LC_SYS_CFLAGS = optional_env_optional_crate_target("CFLAGS").unwrap_or_default();
+        AWS_LC_SYS_CXXFLAGS = optional_env_optional_crate_target("CXXFLAGS").unwrap_or_default();
         AWS_LC_SYS_PREBUILT_NASM = env_crate_var_to_bool("PREBUILT_NASM");
         AWS_LC_SYS_C_STD = CStdRequested::from_env();
         AWS_LC_SYS_CMAKE_BUILDER = env_crate_var_to_bool("CMAKE_BUILDER");
@@ -595,8 +597,26 @@ fn is_no_pregenerated_src() -> bool {
 
 #[allow(unknown_lints)]
 #[allow(static_mut_refs)]
-fn get_crate_cflags() -> &'static str {
-    unsafe { AWS_LC_SYS_CFLAGS.as_str() }
+fn get_crate_cflags() -> Option<&'static str> {
+    unsafe {
+        if AWS_LC_SYS_CFLAGS.is_empty() {
+            None
+        } else {
+            Some(AWS_LC_SYS_CFLAGS.as_str())
+        }
+    }
+}
+
+#[allow(unknown_lints)]
+#[allow(static_mut_refs)]
+fn get_crate_cxxflags() -> Option<&'static str> {
+    unsafe {
+        if AWS_LC_SYS_CXXFLAGS.is_empty() {
+            None
+        } else {
+            Some(AWS_LC_SYS_CXXFLAGS.as_str())
+        }
+    }
 }
 
 fn use_prebuilt_nasm() -> bool {

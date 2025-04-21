@@ -326,8 +326,7 @@ impl CcBuilder {
         for option in build_options {
             option.apply_cc(&mut cc_build);
         }
-        let cflags = get_crate_cflags();
-        if !cflags.is_empty() {
+        if let Some(cflags) = get_crate_cflags() {
             set_env_for_target("CFLAGS", cflags);
         }
         cc_build

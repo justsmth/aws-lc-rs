@@ -5,9 +5,9 @@ use crate::cc_builder::CcBuilder;
 use crate::OutputLib::{Crypto, RustWrapper, Ssl};
 use crate::{
     allow_prebuilt_nasm, cargo_env, effective_target, emit_warning, execute_command,
-    get_crate_cflags, is_crt_static, is_no_asm, is_no_pregenerated_src, optional_env,
-    optional_env_optional_crate_target, set_env, set_env_for_target, target_arch, target_env,
-    target_os, test_nasm_command, use_prebuilt_nasm, OutputLibType,
+    get_crate_cflags, get_crate_cxxflags, is_crt_static, is_no_asm, is_no_pregenerated_src,
+    optional_env, optional_env_optional_crate_target, set_env, set_env_for_target, target_arch,
+    target_env, target_os, test_nasm_command, use_prebuilt_nasm, OutputLibType,
 };
 use std::env;
 use std::ffi::OsString;
@@ -141,9 +141,12 @@ impl CmakeBuilder {
             cmake_cfg.define("ASAN", "1");
         }
 
-        let cflags = get_crate_cflags();
-        if !cflags.is_empty() {
+        if let Some(cflags) = get_crate_cflags() {
             set_env_for_target("CFLAGS", cflags);
+        }
+
+        if let Some(cxxflags) = get_crate_cxxflags() {
+            set_env_for_target("CXXFLAGS", cxxflags);
         }
 
         if target_env() == "ohos" {
