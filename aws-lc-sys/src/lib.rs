@@ -4,8 +4,6 @@
 #![cfg_attr(not(clippy), allow(unexpected_cfgs))]
 #![cfg_attr(not(clippy), allow(unknown_lints))]
 
-use std::os::raw::{c_char, c_long, c_void};
-
 #[allow(unused_macros)]
 macro_rules! use_bindings {
     ($bindings:ident) => {
@@ -14,11 +12,24 @@ macro_rules! use_bindings {
     };
 }
 
+#[cfg(not(any(feature = "ssl", feature = "all-bindings", use_bindgen_generated)))]
+use_bindings!(universal);
+
 macro_rules! platform_binding {
     ($platform:ident, $platform_crypto:ident, $platform_ssl:ident) => {
-        #[cfg(all($platform, not(feature = "ssl"), not(use_bindgen_generated)))]
+        #[cfg(all(
+            $platform,
+            feature = "all-bindings",
+            not(feature = "ssl"),
+            not(use_bindgen_generated)
+        ))]
         use_bindings!($platform_crypto);
-        #[cfg(all($platform, feature = "ssl", not(use_bindgen_generated)))]
+        #[cfg(all(
+            $platform,
+            feature = "all-bindings",
+            not(feature = "ssl"),
+            not(use_bindgen_generated)
+        ))]
         use_bindings!($platform_ssl);
     };
 }
@@ -138,6 +149,10 @@ pub fn ERR_GET_FUNC(packed_error: u32) -> i32 {
     unsafe { ERR_GET_FUNC_RUST(packed_error) }
 }
 
+#[cfg(feature = "all-bindings")]
+use std::os::raw::{c_char, c_long, c_void};
+
+#[cfg(feature = "all-bindings")]
 #[allow(non_snake_case, clippy::not_unsafe_ptr_arg_deref)]
 pub fn BIO_get_mem_data(b: *mut BIO, pp: *mut *mut c_char) -> c_long {
     unsafe { BIO_ctrl(b, BIO_CTRL_INFO, 0, pp.cast::<c_void>()) }
