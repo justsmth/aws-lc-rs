@@ -97,6 +97,8 @@ jobs:
         if: ${{ matrix.target[0] != 'arm-linux-androideabi' }}
         run: |
           cross test -p aws-lc-sys --release "${CROSS_TEST_EXTRA_FLAG}" --features ssl --target ${{ matrix.target[0] }}
+      - name: Install bindgen-cli
+        run: cargo install --locked bindgen-cli
       - name:  Cross-compilation w/ external bindgen (aws-lc-sys/ssl feature)
         if: ${{ matrix.target[0] != 'arm-linux-androideabi' }}
         env:
