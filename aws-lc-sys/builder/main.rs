@@ -776,15 +776,21 @@ fn main() {
         bindings_available = true;
     }
 
-    if !bindings_available && !cfg!(feature = "ssl") {
-        let gen_bindings_path = out_dir().join("bindings.rs");
-        let result = invoke_external_bindgen(&manifest_dir, &prefix, &gen_bindings_path);
-        match result {
-            Ok(()) => {
-                emit_rustc_cfg("use_bindgen_pregenerated");
-                bindings_available = true;
+    if !bindings_available {
+        if !cfg!(feature = "ssl") {
+            let gen_bindings_path = out_dir().join("bindings.rs");
+            let result = invoke_external_bindgen(&manifest_dir, &prefix, &gen_bindings_path);
+            match result {
+                Ok(()) => {
+                    emit_rustc_cfg("use_bindgen_pregenerated");
+                    bindings_available = true;
+                }
+                Err(msg) => eprintln!("Failure invoking external bindgen! {msg}"),
             }
-            Err(msg) => eprintln!("Failure invoking external bindgen! {msg}"),
+        } else {
+            emit_warning(
+                "External bindgen required, but external bindgen unable to produce SSL bindings.",
+            );
         }
     }
 

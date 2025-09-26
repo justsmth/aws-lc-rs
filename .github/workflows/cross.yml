@@ -105,7 +105,7 @@ jobs:
           # require the use of external bindgen
           AWS_LC_SYS_EXTERNAL_BINDGEN: 1
         run:
-          cross test -p aws-lc-sys --release "${CROSS_TEST_EXTRA_FLAG}" --features ssl --target ${{ matrix.target[0] }}
+          cross test -p aws-lc-sys --release "${CROSS_TEST_EXTRA_FLAG}" --features bindgen --target ${{ matrix.target[0] }}
 
 
   aws-lc-rs-cross-prebuilt-nasm:
