@@ -328,7 +328,25 @@ impl CmakeBuilder {
         let script_path = script_path.display().to_string();
         let script_path = script_path.replace('\\', "/");
 
-        cmake_cfg.define("CMAKE_ASM_NASM_COMPILER", script_path.as_str());
+        // When using Unix Makefiles generator with a .bat file, we need to wrap it with cmd.exe
+        // because Make cannot execute .bat files directly
+        let compiler_value = if script_path.ends_with(".bat") {
+            if let Some(generator) = optional_env("CMAKE_GENERATOR") {
+                if generator.to_lowercase().contains("makefile") {
+                    emit_warning("Using Unix Makefiles with .bat script - wrapping with cmd.exe");
+                    // Wrap with cmd.exe to handle .bat execution and paths with spaces
+                    format!("cmd.exe /c \"{}\"", script_path)
+                } else {
+                    script_path.clone()
+                }
+            } else {
+                script_path.clone()
+            }
+        } else {
+            script_path.clone()
+        };
+
+        cmake_cfg.define("CMAKE_ASM_NASM_COMPILER", compiler_value.as_str());
         // Without the following definition, the build fails with a message similar to the one
         // reported here: https://gitlab.kitware.com/cmake/cmake/-/issues/19453
         // The variables below were found in the associated fix:
