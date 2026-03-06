@@ -898,7 +898,9 @@ fn encrypt_decrypt_key_size() {
 #[test]
 fn too_small_encrypt_key() {
     const PRIVATE_KEY: &[u8] = include_bytes!("data/rsa_test_private_key_1024.p8");
-    PrivateDecryptingKey::from_pkcs8(PRIVATE_KEY).expect_err("key too small");
+    const PUBLIC_KEY: &[u8] = include_bytes!("data/rsa_test_public_key_1024.x509");
+    PrivateDecryptingKey::from_pkcs8(PRIVATE_KEY).expect_err("private key too small");
+    PublicEncryptingKey::from_der(PUBLIC_KEY).expect_err("public key too small");
 }
 
 #[test]
