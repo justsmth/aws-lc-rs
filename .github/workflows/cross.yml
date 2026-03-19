@@ -333,6 +333,26 @@ jobs:
       - name: Release build for `x86_64-apple-ios`
         run: cargo build -p aws-lc-rs --release --target x86_64-apple-ios --features bindgen
 
+  aws-lc-rs-ios-aarch64-device:
+    if: github.repository_owner == 'aws'
+    name: iOS aarch64 (device) cross-platform build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: "recursive"
+      - run: |
+          brew install llvm
+      - uses: dtolnay/rust-toolchain@master
+        id: toolchain
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios
+      - name: Debug build for `aarch64-apple-ios`
+        run: cargo build -p aws-lc-rs --target aarch64-apple-ios --features bindgen
+      - name: Release build for `aarch64-apple-ios`
+        run: cargo build -p aws-lc-rs --release --target aarch64-apple-ios --features bindgen
+
   cargo-xwin:
     if: github.repository_owner == 'aws'
     runs-on: ${{ matrix.host }}

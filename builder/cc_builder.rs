@@ -300,6 +300,22 @@ impl CcBuilder {
                 // Needed by illumos
                 build_options.push(BuildOption::define("__EXTENSIONS__", "1"));
             }
+
+            // Workaround: Ensure OPENSSL_IOS is defined for non-macOS Apple
+            // targets (iOS, tvOS, watchOS, visionOS). Some Apple Clang versions
+            // (e.g., 15.0.7) do not correctly expose TARGET_OS_IPHONE as a
+            // compiler built-in during cross-compilation, causing the aws-lc C
+            // code to select the wrong RNG backend (urandom instead of
+            // CCRandomGenerateBytes).
+            // See: https://github.com/aws/aws-lc-rs/issues/1068
+            //
+            // The empty value (`-DOPENSSL_IOS=`) matches the source code's
+            // `#define OPENSSL_IOS` to avoid macro redefinition warnings.
+
+            // TODO: First verify we can reproduce
+            // if target_os().contains("ios") {
+            //     build_options.push(BuildOption::flag("-DOPENSSL_IOS="));
+            // }
         }
         if Some(true) == disable_jitter_entropy() {
             build_options.push(BuildOption::define("DISABLE_CPU_JITTER_ENTROPY", "1"));
