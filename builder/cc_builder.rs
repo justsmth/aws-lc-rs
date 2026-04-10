@@ -508,7 +508,9 @@ impl CcBuilder {
         ));
         s2n_bignum_builder.define("S2N_BN_HIDE_SYMBOLS", "1");
 
-        let mut jitter_entropy_builder = if !disable_jitter_entropy() {
+        let mut jitter_entropy_builder = if disable_jitter_entropy() {
+            Build::new()
+        } else {
             // CPU Jitter Entropy is compiled separately due to needing specific flags
             let mut jitter_entropy_builder =
                 self.prepare_jitter_entropy_builder(compiler.is_like_msvc());
@@ -522,8 +524,6 @@ impl CcBuilder {
                     .display()
             ));
             jitter_entropy_builder
-        } else {
-            Build::new()
         };
 
         let mut build_options = vec![];
