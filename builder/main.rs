@@ -476,7 +476,53 @@ fn target_underscored() -> String {
 }
 
 fn out_dir() -> PathBuf {
-    PathBuf::from(cargo_env("OUT_DIR"))
+    let out = PathBuf::from(cargo_env("OUT_DIR"));
+    #[cfg(windows)]
+    let out = to_short_path(&out);
+    out
+}
+
+/// On Windows, convert a path to its 8.3 short form to avoid MAX_PATH (260 char) limits
+/// when cl.exe is invoked with deeply nested source trees (e.g. Bazel runfiles).
+#[cfg(windows)]
+fn to_short_path(path: &Path) -> PathBuf {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    extern "system" {
+        fn GetShortPathNameW(
+            lpszLongPath: *const u16,
+            lpszShortPath: *mut u16,
+            cchBuffer: u32,
+        ) -> u32;
+    }
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let len = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+    if len == 0 {
+        return path.to_path_buf();
+    }
+    let mut buf = vec![0u16; len as usize];
+    let result = unsafe { GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), len) };
+    if result == 0 {
+        return path.to_path_buf();
+    }
+    buf.truncate(result as usize);
+    let short_path = PathBuf::from(std::ffi::OsString::from_wide(&buf));
+
+    const MAX_PATH: usize = 260;
+    let original_len = wide.len() - 1;
+    if original_len >= MAX_PATH && (result as usize) >= MAX_PATH {
+        emit_warning(format!(
+            "Path length ({}) exceeds MAX_PATH ({}) and 8.3 short name conversion was ineffective. \
+             8.3 short names may be disabled on this volume. \
+             See: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-8dot3name",
+            original_len, MAX_PATH,
+        ));
+    }
+
+    short_path
 }
 
 fn current_dir() -> PathBuf {
@@ -812,19 +858,21 @@ fn handle_bindgen(_manifest_dir: &Path, _prefix: &Option<String>) -> bool {
     false
 }
 
+fn canonicalized_manifest_dir() -> PathBuf {
+    let manifest_dir = current_dir();
+    let manifest_dir = dunce::canonicalize(Path::new(&manifest_dir)).unwrap();
+    #[cfg(windows)]
+    let manifest_dir = to_short_path(&manifest_dir);
+    manifest_dir
+}
+
 #[cfg(not(test))]
 fn main() {
     initialize();
     prepare_cargo_cfg();
 
-    let manifest_dir = current_dir();
-    let manifest_dir = dunce::canonicalize(Path::new(&manifest_dir)).unwrap();
-    let prefix_str = prefix_string();
-    let prefix = if is_no_prefix() {
-        None
-    } else {
-        Some(prefix_str)
-    };
+    let manifest_dir = canonicalized_manifest_dir();
+    let prefix = (!is_no_prefix()).then(prefix_string);
 
     let builder = get_builder(&prefix, &manifest_dir, &out_dir());
     emit_warning(format!("Building with: {}", builder.name()));
@@ -862,7 +910,9 @@ fn main() {
             "If bindgen is unable to locate a header file, use the \
             BINDGEN_EXTRA_CLANG_ARGS environment variable to specify additional include paths.",
         );
-        emit_warning("See: https://github.com/rust-lang/rust-bindgen?tab=readme-ov-file#environment-variables");
+        emit_warning(
+            "See: https://github.com/rust-lang/rust-bindgen?tab=readme-ov-file#environment-variables",
+        );
         emit_warning("######");
         let aws_lc_crypto_dir = Path::new(&manifest_dir).join("aws-lc").join("crypto");
         if !aws_lc_crypto_dir.exists() {
