@@ -746,7 +746,13 @@ impl CcBuilder {
         if self.compiler_check("stdalign_check", Vec::<&'static str>::new()) {
             cc_build.define("AWS_LC_STDALIGN_AVAILABLE", Some("1"));
         }
-        if self.compiler_check("builtin_swap_check", Vec::<&'static str>::new()) {
+        // Only run builtin_swap_check for GCC/Clang (matching CMake). On MSVC,
+        // try_compile_intermediates succeeds but __builtin_bswap* are unresolved at
+        // link time. Without this guard the define is set and crypto/internal.h skips
+        // the correct _MSC_VER path that uses _byteswap_* intrinsics.
+        if target_env() != "msvc"
+            && self.compiler_check("builtin_swap_check", Vec::<&'static str>::new())
+        {
             cc_build.define("AWS_LC_BUILTIN_SWAP_SUPPORTED", Some("1"));
         }
         if target_arch() == "aarch64"
