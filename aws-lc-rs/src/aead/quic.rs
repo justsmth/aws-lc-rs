@@ -163,6 +163,10 @@ fn cipher_new_mask(
             let counter = u32::from_ne_bytes(*counter_bytes).to_le();
             encrypt_block_chacha20(raw_key, input, nonce, counter)?
         }
+        #[cfg(feature = "des")]
+        SymmetricCipherKey::DesEde { .. } | SymmetricCipherKey::DesEde3 { .. } => {
+            return Err(error::Unspecified)
+        }
     };
 
     let mut out: [u8; 5] = [0; 5];

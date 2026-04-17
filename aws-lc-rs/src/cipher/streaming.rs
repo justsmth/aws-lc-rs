@@ -144,6 +144,16 @@ impl StreamingEncryptingKey {
                 );
                 evp_encrypt_init(&mut cipher_ctx, &cipher, key_bytes, Some(iv))?;
             }
+            #[cfg(feature = "des")]
+            ctx @ EncryptionContext::Iv64(..) => {
+                let iv = <&[u8]>::try_from(ctx)?;
+                debug_assert_eq!(
+                    iv.len(),
+                    <usize>::try_from(unsafe { EVP_CIPHER_iv_length(cipher.as_const_ptr()) })
+                        .unwrap()
+                );
+                evp_encrypt_init(&mut cipher_ctx, &cipher, key_bytes, Some(iv))?;
+            }
             EncryptionContext::None => {
                 evp_encrypt_init(&mut cipher_ctx, &cipher, key_bytes, None)?;
             }
@@ -422,6 +432,16 @@ impl StreamingDecryptingKey {
 
         match &context {
             ctx @ DecryptionContext::Iv128(..) => {
+                let iv = <&[u8]>::try_from(ctx)?;
+                debug_assert_eq!(
+                    iv.len(),
+                    <usize>::try_from(unsafe { EVP_CIPHER_iv_length(cipher.as_const_ptr()) })
+                        .unwrap()
+                );
+                evp_decrypt_init(&mut cipher_ctx, &cipher, key_bytes, Some(iv))?;
+            }
+            #[cfg(feature = "des")]
+            ctx @ DecryptionContext::Iv64(..) => {
                 let iv = <&[u8]>::try_from(ctx)?;
                 debug_assert_eq!(
                     iv.len(),

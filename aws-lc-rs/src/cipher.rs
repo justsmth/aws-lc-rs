@@ -221,6 +221,8 @@
 pub(crate) mod aes;
 pub(crate) mod block;
 pub(crate) mod chacha;
+#[cfg(feature = "des")]
+pub(crate) mod des;
 pub(crate) mod key;
 mod padded;
 mod streaming;
@@ -233,10 +235,15 @@ use crate::aws_lc::{
     EVP_aes_192_cfb128, EVP_aes_192_ctr, EVP_aes_192_ecb, EVP_aes_256_cbc, EVP_aes_256_cfb128,
     EVP_aes_256_ctr, EVP_aes_256_ecb, EVP_CIPHER,
 };
+#[cfg(feature = "des")]
+use crate::aws_lc::{EVP_des_ede, EVP_des_ede3_cbc, EVP_des_ede3_ecb, EVP_des_ede_cbc};
 use crate::buffer::Buffer;
 use crate::error::Unspecified;
 use crate::hkdf;
 use crate::hkdf::KeyType;
+#[cfg(feature = "des")]
+#[allow(deprecated)]
+use crate::iv::IV_LEN_64_BIT;
 use crate::iv::{FixedLength, IV_LEN_128_BIT};
 use crate::ptr::ConstPointer;
 use core::fmt::Debug;
@@ -251,6 +258,16 @@ pub use crate::cipher::aes::AES_192_KEY_LEN;
 /// The number of bytes in an AES 256-bit key
 pub use crate::cipher::aes::AES_256_KEY_LEN;
 
+#[cfg(feature = "des")]
+/// The number of bytes in a 2TDEA (DES-EDE) key
+#[deprecated]
+pub use crate::cipher::des::DES_EDE_KEY_LEN;
+
+#[cfg(feature = "des")]
+/// The number of bytes in a 3TDEA (DES-EDE3) key
+#[deprecated]
+pub use crate::cipher::des::DES_EDE3_KEY_LEN;
+
 const MAX_CIPHER_KEY_LEN: usize = AES_256_KEY_LEN;
 
 /// The number of bytes for an AES-CBC initialization vector (IV)
@@ -262,7 +279,14 @@ pub use crate::cipher::aes::AES_CTR_IV_LEN;
 /// The number of bytes for an AES-CFB initialization vector (IV)
 pub use crate::cipher::aes::AES_CFB_IV_LEN;
 
+#[cfg(feature = "des")]
+#[deprecated]
+/// The number of bytes for a DES CBC initialization vector (IV)
+pub use crate::cipher::des::DES_CBC_IV_LEN;
+
 use crate::cipher::aes::AES_BLOCK_LEN;
+#[cfg(feature = "des")]
+use crate::cipher::des::DES_BLOCK_LEN;
 
 const MAX_CIPHER_BLOCK_LEN: usize = AES_BLOCK_LEN;
 
@@ -299,6 +323,20 @@ impl OperatingMode {
                 (OperatingMode::CTR, AlgorithmId::Aes256) => EVP_aes_256_ctr(),
                 (OperatingMode::CFB128, AlgorithmId::Aes256) => EVP_aes_256_cfb128(),
                 (OperatingMode::ECB, AlgorithmId::Aes256) => EVP_aes_256_ecb(),
+                #[cfg(feature = "des")]
+                #[allow(deprecated)]
+                (OperatingMode::CBC, AlgorithmId::DesEde) => EVP_des_ede_cbc(),
+                #[cfg(feature = "des")]
+                #[allow(deprecated)]
+                (OperatingMode::ECB, AlgorithmId::DesEde) => EVP_des_ede(),
+                #[cfg(feature = "des")]
+                #[allow(deprecated)]
+                (OperatingMode::CBC, AlgorithmId::DesEde3) => EVP_des_ede3_cbc(),
+                #[cfg(feature = "des")]
+                #[allow(deprecated)]
+                (OperatingMode::ECB, AlgorithmId::DesEde3) => EVP_des_ede3_ecb(),
+                #[cfg(feature = "des")]
+                _ => unreachable!(),
             })
             .unwrap()
         }
@@ -313,6 +351,11 @@ macro_rules! define_cipher_context {
             /// A 128-bit Initialization Vector.
             Iv128(FixedLength<IV_LEN_128_BIT>),
 
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            /// A 64-bit Initialization Vector (used by DES/3DES).
+            Iv64(FixedLength<IV_LEN_64_BIT>),
+
             /// No Cipher Context
             None,
         }
@@ -323,6 +366,8 @@ macro_rules! define_cipher_context {
             fn try_from(value: &'a $name) -> Result<Self, Unspecified> {
                 match value {
                     $name::Iv128(iv) => Ok(iv.as_ref()),
+                    #[cfg(feature = "des")]
+                    $name::Iv64(iv) => Ok(iv.as_ref()),
                     _ => Err(Unspecified),
                 }
             }
@@ -332,6 +377,8 @@ macro_rules! define_cipher_context {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 match self {
                     Self::Iv128(_) => write!(f, "Iv128"),
+                    #[cfg(feature = "des")]
+                    Self::Iv64(_) => write!(f, "Iv64"),
                     Self::None => write!(f, "None"),
                 }
             }
@@ -341,6 +388,8 @@ macro_rules! define_cipher_context {
             fn from(value: $other) -> Self {
                 match value {
                     $other::Iv128(iv) => $name::Iv128(iv),
+                    #[cfg(feature = "des")]
+                    $other::Iv64(iv) => $name::Iv64(iv),
                     $other::None => $name::None,
                 }
             }
@@ -363,6 +412,16 @@ pub enum AlgorithmId {
 
     /// AES 192-bit
     Aes192,
+
+    /// 2TDEA
+    #[cfg(feature = "des")]
+    #[deprecated]
+    DesEde,
+
+    /// 3TDEA
+    #[cfg(feature = "des")]
+    #[deprecated]
+    DesEde3,
 }
 
 /// A cipher algorithm.
@@ -394,6 +453,26 @@ pub const AES_256: Algorithm = Algorithm {
     block_len: AES_BLOCK_LEN,
 };
 
+/// 2TDEA (DES-EDE) cipher
+#[cfg(feature = "des")]
+#[deprecated]
+pub const DES_EDE: Algorithm = Algorithm {
+    #[allow(deprecated)]
+    id: AlgorithmId::DesEde,
+    key_len: DES_EDE_KEY_LEN,
+    block_len: DES_BLOCK_LEN,
+};
+
+/// 3TDEA (DES-EDE3) cipher
+#[cfg(feature = "des")]
+#[deprecated]
+pub const DES_EDE3: Algorithm = Algorithm {
+    #[allow(deprecated)]
+    id: AlgorithmId::DesEde3,
+    key_len: DES_EDE3_KEY_LEN,
+    block_len: DES_BLOCK_LEN,
+};
+
 impl Algorithm {
     fn id(&self) -> &AlgorithmId {
         &self.id
@@ -417,6 +496,13 @@ impl Algorithm {
                 }
                 OperatingMode::ECB => Ok(EncryptionContext::None),
             },
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => match mode {
+                OperatingMode::CBC => Ok(EncryptionContext::Iv64(FixedLength::new()?)),
+                OperatingMode::ECB => Ok(EncryptionContext::None),
+                _ => Err(Unspecified),
+            },
         }
     }
 
@@ -431,6 +517,13 @@ impl Algorithm {
                     matches!(input, EncryptionContext::None)
                 }
             },
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => match mode {
+                OperatingMode::CBC => matches!(input, EncryptionContext::Iv64(_)),
+                OperatingMode::ECB => matches!(input, EncryptionContext::None),
+                _ => false,
+            },
         }
     }
 
@@ -444,6 +537,13 @@ impl Algorithm {
                 OperatingMode::ECB => {
                     matches!(input, DecryptionContext::None)
                 }
+            },
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => match mode {
+                OperatingMode::CBC => matches!(input, DecryptionContext::Iv64(_)),
+                OperatingMode::ECB => matches!(input, DecryptionContext::None),
+                _ => false,
             },
         }
     }
@@ -513,6 +613,12 @@ impl TryInto<SymmetricCipherKey> for UnboundCipherKey {
             AlgorithmId::Aes128 => SymmetricCipherKey::aes128(self.key_bytes.as_ref()),
             AlgorithmId::Aes192 => SymmetricCipherKey::aes192(self.key_bytes.as_ref()),
             AlgorithmId::Aes256 => SymmetricCipherKey::aes256(self.key_bytes.as_ref()),
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde => SymmetricCipherKey::des_ede(self.key_bytes.as_ref()),
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde3 => SymmetricCipherKey::des_ede3(self.key_bytes.as_ref()),
         }
     }
 }
@@ -797,21 +903,37 @@ fn encrypt(
             AlgorithmId::Aes128 | AlgorithmId::Aes192 | AlgorithmId::Aes256 => {
                 aes::encrypt_cbc_mode(key, context, in_out)
             }
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => {
+                des::encrypt_cbc_mode(key, context, in_out)
+            }
         },
         OperatingMode::CTR => match algorithm.id() {
             AlgorithmId::Aes128 | AlgorithmId::Aes192 | AlgorithmId::Aes256 => {
                 aes::encrypt_ctr_mode(key, context, in_out)
             }
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => Err(Unspecified),
         },
         // TODO: Hopefully support CFB1, and CFB8
         OperatingMode::CFB128 => match algorithm.id() {
             AlgorithmId::Aes128 | AlgorithmId::Aes192 | AlgorithmId::Aes256 => {
                 aes::encrypt_cfb_mode(key, mode, context, in_out)
             }
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => Err(Unspecified),
         },
         OperatingMode::ECB => match algorithm.id() {
             AlgorithmId::Aes128 | AlgorithmId::Aes192 | AlgorithmId::Aes256 => {
                 aes::encrypt_ecb_mode(key, context, in_out)
+            }
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => {
+                des::encrypt_ecb_mode(key, context, in_out)
             }
         },
     }
@@ -838,21 +960,37 @@ fn decrypt<'in_out>(
             AlgorithmId::Aes128 | AlgorithmId::Aes192 | AlgorithmId::Aes256 => {
                 aes::decrypt_cbc_mode(key, context, in_out)
             }
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => {
+                des::decrypt_cbc_mode(key, context, in_out)
+            }
         },
         OperatingMode::CTR => match algorithm.id() {
             AlgorithmId::Aes128 | AlgorithmId::Aes192 | AlgorithmId::Aes256 => {
                 aes::decrypt_ctr_mode(key, context, in_out)
             }
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => Err(Unspecified),
         },
         // TODO: Hopefully support CFB1, and CFB8
         OperatingMode::CFB128 => match algorithm.id() {
             AlgorithmId::Aes128 | AlgorithmId::Aes192 | AlgorithmId::Aes256 => {
                 aes::decrypt_cfb_mode(key, mode, context, in_out)
             }
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => Err(Unspecified),
         },
         OperatingMode::ECB => match algorithm.id() {
             AlgorithmId::Aes128 | AlgorithmId::Aes192 | AlgorithmId::Aes256 => {
                 aes::decrypt_ecb_mode(key, context, in_out)
+            }
+            #[cfg(feature = "des")]
+            #[allow(deprecated)]
+            AlgorithmId::DesEde | AlgorithmId::DesEde3 => {
+                des::decrypt_ecb_mode(key, context, in_out)
             }
         },
     }
@@ -1189,5 +1327,124 @@ mod tests {
         "000102030405060708090a0b0c0d0e0f",
         "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e5130c81c46a35ce411e5fbc1191a0a52eff69f2445df4f9b17ad2b417be66c3710",
         "f58c4c04d6e5f1ba779eabfb5f7bfbd69cfc4e967edb808d679f777bc6702c7d39f23369a9d9bacfa530e26304231461b2eb05e2c39be9fcda6c19078c6a9d1b"
+    );
+
+    #[cfg(feature = "des")]
+    #[test]
+    #[allow(deprecated)]
+    fn test_des_ede_cbc() {
+        let key = from_hex("0123456789abcdef23456789abcdef01").unwrap();
+        for i in 1..=3 {
+            let size = i * 8;
+            helper_test_cipher_n_bytes(key.as_slice(), &DES_EDE, OperatingMode::CBC, size);
+        }
+    }
+
+    #[cfg(feature = "des")]
+    #[allow(deprecated)]
+    #[test]
+    fn test_des_ede_ecb() {
+        let key = from_hex("0123456789abcdef23456789abcdef01").unwrap();
+        for i in 1..=3 {
+            let size = i * 8;
+            helper_test_cipher_n_bytes(key.as_slice(), &DES_EDE, OperatingMode::ECB, size);
+        }
+    }
+
+    #[cfg(feature = "des")]
+    #[test]
+    #[allow(deprecated)]
+    fn test_des_ede3_cbc() {
+        let key = from_hex("0123456789abcdef23456789abcdef01456789abcdef0123").unwrap();
+        for i in 1..=3 {
+            let size = i * 8;
+            helper_test_cipher_n_bytes(key.as_slice(), &DES_EDE3, OperatingMode::CBC, size);
+        }
+    }
+
+    #[cfg(feature = "des")]
+    #[test]
+    #[allow(deprecated)]
+    fn test_des_ede3_ecb() {
+        let key = from_hex("0123456789abcdef23456789abcdef01456789abcdef0123").unwrap();
+        for i in 1..=3 {
+            let size = i * 8;
+            helper_test_cipher_n_bytes(key.as_slice(), &DES_EDE3, OperatingMode::ECB, size);
+        }
+    }
+
+    #[cfg(feature = "des")]
+    macro_rules! des_cipher_kat {
+        ($name:ident, $alg:expr, $mode:expr, $key:literal, $iv:literal, $plaintext:literal, $ciphertext:literal) => {
+            #[allow(deprecated)]
+            #[test]
+            fn $name() {
+                let key = from_hex($key).unwrap();
+                let input = from_hex($plaintext).unwrap();
+                let expected_ciphertext = from_hex($ciphertext).unwrap();
+
+                let ec = if $iv.len() == 0 {
+                    EncryptionContext::None
+                } else {
+                    let iv_arr: [u8; 8] = from_hex($iv).unwrap().try_into().unwrap();
+                    EncryptionContext::Iv64(FixedLength::from(iv_arr))
+                };
+
+                let unbound_key = UnboundCipherKey::new($alg, &key).unwrap();
+                let encrypting_key = EncryptingKey::new(unbound_key, $mode).unwrap();
+                let mut in_out = input.clone();
+                let context = encrypting_key.less_safe_encrypt(&mut in_out, ec).unwrap();
+                assert_eq!(expected_ciphertext, in_out);
+
+                let unbound_key2 = UnboundCipherKey::new($alg, &key).unwrap();
+                let decrypting_key = DecryptingKey::new(unbound_key2, $mode).unwrap();
+                let plaintext = decrypting_key.decrypt(&mut in_out, context).unwrap();
+                assert_eq!(input.as_slice(), plaintext);
+            }
+        };
+    }
+
+    #[cfg(feature = "des")]
+    des_cipher_kat!(
+        test_sp800_67_des_ede_cbc,
+        &DES_EDE,
+        OperatingMode::CBC,
+        "0123456789abcdef23456789abcdef01",
+        "f69f2445df4f9b17",
+        "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51",
+        "7401CE1EAB6D003CAFF84BF47B36CC2154F0238F9FFECD8F6ACF118392B45581"
+    );
+
+    #[cfg(feature = "des")]
+    des_cipher_kat!(
+        test_sp800_67_des_ede_ecb,
+        &DES_EDE,
+        OperatingMode::ECB,
+        "0123456789abcdef23456789abcdef01",
+        "",
+        "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51",
+        "06EDE3D82884090AFF322C19F0518486730576972A666E58B6C88CF107340D3D"
+    );
+
+    #[cfg(feature = "des")]
+    des_cipher_kat!(
+        test_sp800_67_des_ede3_cbc,
+        &DES_EDE3,
+        OperatingMode::CBC,
+        "0123456789abcdef23456789abcdef01456789abcdef0123",
+        "f69f2445df4f9b17",
+        "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51",
+        "2079c3d53aa763e193b79e2569ab5262516570481f25b50f73c0bda85c8e0da7"
+    );
+
+    #[cfg(feature = "des")]
+    des_cipher_kat!(
+        test_sp800_67_des_ede3_ecb,
+        &DES_EDE3,
+        OperatingMode::ECB,
+        "0123456789abcdef23456789abcdef01456789abcdef0123",
+        "",
+        "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51",
+        "714772f339841d34267fcc4bd2949cc3ee11c22a576a303876183f99c0b6de87"
     );
 }

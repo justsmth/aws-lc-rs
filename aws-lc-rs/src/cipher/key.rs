@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
 use crate::aws_lc::{AES_set_decrypt_key, AES_set_encrypt_key, AES_KEY};
+#[cfg(feature = "des")]
+use crate::aws_lc::{DES_cblock, DES_key_schedule, DES_set_key};
 use crate::cipher::block::Block;
 use crate::cipher::chacha::ChaCha20Key;
+#[cfg(feature = "des")]
+use crate::cipher::des::{DesKey, DES_EDE3_KEY_LEN, DES_EDE_KEY_LEN};
 use crate::cipher::{AES_128_KEY_LEN, AES_192_KEY_LEN, AES_256_KEY_LEN};
 use crate::error::Unspecified;
 use core::mem::{size_of, MaybeUninit};
@@ -14,10 +18,29 @@ use std::os::raw::c_uint;
 use zeroize::Zeroize;
 
 pub(crate) enum SymmetricCipherKey {
-    Aes128 { enc_key: AES_KEY, dec_key: AES_KEY },
-    Aes192 { enc_key: AES_KEY, dec_key: AES_KEY },
-    Aes256 { enc_key: AES_KEY, dec_key: AES_KEY },
-    ChaCha20 { raw_key: ChaCha20Key },
+    Aes128 {
+        enc_key: AES_KEY,
+        dec_key: AES_KEY,
+    },
+    Aes192 {
+        enc_key: AES_KEY,
+        dec_key: AES_KEY,
+    },
+    Aes256 {
+        enc_key: AES_KEY,
+        dec_key: AES_KEY,
+    },
+    ChaCha20 {
+        raw_key: ChaCha20Key,
+    },
+    #[cfg(feature = "des")]
+    DesEde {
+        key: DesKey,
+    },
+    #[cfg(feature = "des")]
+    DesEde3 {
+        key: DesKey,
+    },
 }
 
 unsafe impl Send for SymmetricCipherKey {}
@@ -44,6 +67,14 @@ impl Drop for SymmetricCipherKey {
                 dec_bytes.zeroize();
             },
             SymmetricCipherKey::ChaCha20 { .. } => {}
+            #[cfg(feature = "des")]
+            SymmetricCipherKey::DesEde { key } | SymmetricCipherKey::DesEde3 { key } => unsafe {
+                let key_bytes: &mut [u8; size_of::<DesKey>()] = (key as *mut DesKey)
+                    .cast::<[u8; size_of::<DesKey>()]>()
+                    .as_mut()
+                    .unwrap();
+                key_bytes.zeroize();
+            },
         }
     }
 }
@@ -113,6 +144,92 @@ impl SymmetricCipherKey {
         }
     }
 
+    #[cfg(feature = "des")]
+    pub(crate) fn des_ede(key_bytes: &[u8]) -> Result<Self, Unspecified> {
+        if key_bytes.len() != DES_EDE_KEY_LEN {
+            return Err(Unspecified);
+        }
+        let mut ks0 = MaybeUninit::<DES_key_schedule>::uninit();
+        let mut ks1 = MaybeUninit::<DES_key_schedule>::uninit();
+        let mut ks2 = MaybeUninit::<DES_key_schedule>::uninit();
+        if -2
+            == unsafe {
+                DES_set_key(
+                    key_bytes[0..8].as_ptr() as *const DES_cblock,
+                    ks0.as_mut_ptr(),
+                )
+            }
+        {
+            return Err(Unspecified);
+        }
+        if -2
+            == unsafe {
+                DES_set_key(
+                    key_bytes[8..16].as_ptr() as *const DES_cblock,
+                    ks1.as_mut_ptr(),
+                )
+            }
+        {
+            return Err(Unspecified);
+        }
+        if -2
+            == unsafe {
+                DES_set_key(
+                    key_bytes[0..8].as_ptr() as *const DES_cblock,
+                    ks2.as_mut_ptr(),
+                )
+            }
+        {
+            return Err(Unspecified);
+        }
+        Ok(SymmetricCipherKey::DesEde {
+            key: DesKey(unsafe { [ks0.assume_init(), ks1.assume_init(), ks2.assume_init()] }),
+        })
+    }
+
+    #[cfg(feature = "des")]
+    pub(crate) fn des_ede3(key_bytes: &[u8]) -> Result<Self, Unspecified> {
+        if key_bytes.len() != DES_EDE3_KEY_LEN {
+            return Err(Unspecified);
+        }
+        let mut ks0 = MaybeUninit::<DES_key_schedule>::uninit();
+        let mut ks1 = MaybeUninit::<DES_key_schedule>::uninit();
+        let mut ks2 = MaybeUninit::<DES_key_schedule>::uninit();
+        if -2
+            == unsafe {
+                DES_set_key(
+                    key_bytes[0..8].as_ptr() as *const DES_cblock,
+                    ks0.as_mut_ptr(),
+                )
+            }
+        {
+            return Err(Unspecified);
+        }
+        if -2
+            == unsafe {
+                DES_set_key(
+                    key_bytes[8..16].as_ptr() as *const DES_cblock,
+                    ks1.as_mut_ptr(),
+                )
+            }
+        {
+            return Err(Unspecified);
+        }
+        if -2
+            == unsafe {
+                DES_set_key(
+                    key_bytes[16..24].as_ptr() as *const DES_cblock,
+                    ks2.as_mut_ptr(),
+                )
+            }
+        {
+            return Err(Unspecified);
+        }
+        Ok(SymmetricCipherKey::DesEde3 {
+            key: DesKey(unsafe { [ks0.assume_init(), ks1.assume_init(), ks2.assume_init()] }),
+        })
+    }
+
     #[allow(dead_code)]
     #[inline]
     pub(crate) fn encrypt_block(&self, block: Block) -> Block {
@@ -122,7 +239,13 @@ impl SymmetricCipherKey {
             | SymmetricCipherKey::Aes256 { enc_key, .. } => {
                 super::aes::encrypt_block(enc_key, block)
             }
-            SymmetricCipherKey::ChaCha20 { .. } => panic!("Unsupported algorithm!"),
+            SymmetricCipherKey::ChaCha20 { .. } => {
+                panic!("Unsupported algorithm!")
+            }
+            #[cfg(feature = "des")]
+            SymmetricCipherKey::DesEde { .. } | SymmetricCipherKey::DesEde3 { .. } => {
+                panic!("Unsupported algorithm!")
+            }
         }
     }
 }
