@@ -594,11 +594,9 @@ jobs:
           docker run -v "${{ github.workspace }}:/aws_lc_rs" openwrt:24.10
 
   msys2:
-    name: msys2 ${{ matrix.sys }} - ${{ matrix.nasm }}, ${{ matrix.generator }}
+    name: msys2 ${{ matrix.sys }} - ${{ matrix.nasm }}, ${{ matrix.generator }}, ${{ matrix.external_bindgen == '1' && 'ext-bindgen' || 'no bindgen' }}
     if: github.repository_owner == 'aws'
     runs-on: windows-latest
-    env:
-      AWS_LC_SYS_EXTERNAL_BINDGEN: 1
     strategy:
       fail-fast: false
       matrix:
@@ -613,6 +611,9 @@ jobs:
           - ninja
           - msys
           - mingw
+        external_bindgen:
+          - '0'
+          - '1'
     steps:
       - name: Install MSYS2
         uses: msys2/setup-msys2@v2
@@ -635,6 +636,7 @@ jobs:
         run: |
           SYSROOT=$(cygpath -a -m '${{ steps.setup_msys2.outputs.msys2-location }}\${{ matrix.sys }}')
           echo "AWS_LC_SYS_PREBUILT_NASM=${{ (matrix.nasm == 'nasm' && '0') || '1' }}" >> $GITHUB_ENV
+          echo "AWS_LC_SYS_EXTERNAL_BINDGEN=${{ matrix.external_bindgen }}" >> $GITHUB_ENV
           echo "BINDGEN_EXTRA_CLANG_ARGS=-target x86_64-pc-windows-gnu" >> $GITHUB_ENV
           echo "GOPATH=${SYSROOT}" >> $GITHUB_ENV
           echo "GOROOT=${SYSROOT}/lib/go" >> $GITHUB_ENV

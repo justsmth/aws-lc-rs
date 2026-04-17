@@ -25,6 +25,7 @@ cmake = { workspace = true }
 dunce = { workspace = true }
 fs_extra = { workspace = true }
 bindgen = { workspace = true, optional = true }
+tempfile = { workspace = true }
 
 [features]
 default = []
