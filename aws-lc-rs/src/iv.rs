@@ -10,6 +10,11 @@ use crate::error::Unspecified;
 use crate::rand;
 use zeroize::Zeroize;
 
+#[cfg(feature = "des")]
+#[deprecated]
+/// Length of a 64-bit IV in bytes (used by DES/3DES).
+pub const IV_LEN_64_BIT: usize = 8;
+
 /// Length of a 128-bit IV in bytes.
 pub const IV_LEN_128_BIT: usize = 16;
 
