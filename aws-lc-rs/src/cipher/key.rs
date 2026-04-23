@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
 use crate::aws_lc::{AES_set_decrypt_key, AES_set_encrypt_key, AES_KEY};
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 use crate::aws_lc::{DES_cblock, DES_key_schedule, DES_set_key};
 use crate::cipher::block::Block;
 use crate::cipher::chacha::ChaCha20Key;
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 use crate::cipher::des::{DesKey, DES_EDE3_KEY_LEN, DES_EDE_KEY_LEN};
 use crate::cipher::{AES_128_KEY_LEN, AES_192_KEY_LEN, AES_256_KEY_LEN};
-use crate::error::Unspecified;
+use crate::error::{KeyRejected, Unspecified};
 use core::mem::{size_of, MaybeUninit};
 use core::ptr::copy_nonoverlapping;
 // TODO: Uncomment when MSRV >= 1.64
@@ -33,11 +33,11 @@ pub(crate) enum SymmetricCipherKey {
     ChaCha20 {
         raw_key: ChaCha20Key,
     },
-    #[cfg(feature = "des")]
+    #[cfg(feature = "legacy-3des")]
     DesEde {
         key: DesKey,
     },
-    #[cfg(feature = "des")]
+    #[cfg(feature = "legacy-3des")]
     DesEde3 {
         key: DesKey,
     },
@@ -67,7 +67,7 @@ impl Drop for SymmetricCipherKey {
                 dec_bytes.zeroize();
             },
             SymmetricCipherKey::ChaCha20 { .. } => {}
-            #[cfg(feature = "des")]
+            #[cfg(feature = "legacy-3des")]
             SymmetricCipherKey::DesEde { key } | SymmetricCipherKey::DesEde3 { key } => unsafe {
                 let key_bytes: &mut [u8; size_of::<DesKey>()] = (key as *mut DesKey)
                     .cast::<[u8; size_of::<DesKey>()]>()
@@ -107,33 +107,33 @@ impl SymmetricCipherKey {
         unsafe { Ok((enc_key.assume_init(), dec_key.assume_init())) }
     }
 
-    pub(crate) fn aes128(key_bytes: &[u8]) -> Result<Self, Unspecified> {
+    pub(crate) fn aes128(key_bytes: &[u8]) -> Result<Self, KeyRejected> {
         if key_bytes.len() != AES_128_KEY_LEN {
-            return Err(Unspecified);
+            return Err(KeyRejected::unspecified());
         }
         let (enc_key, dec_key) = SymmetricCipherKey::aes(key_bytes)?;
         Ok(SymmetricCipherKey::Aes128 { enc_key, dec_key })
     }
 
-    pub(crate) fn aes192(key_bytes: &[u8]) -> Result<Self, Unspecified> {
+    pub(crate) fn aes192(key_bytes: &[u8]) -> Result<Self, KeyRejected> {
         if key_bytes.len() != AES_192_KEY_LEN {
-            return Err(Unspecified);
+            return Err(KeyRejected::unspecified());
         }
         let (enc_key, dec_key) = SymmetricCipherKey::aes(key_bytes)?;
         Ok(SymmetricCipherKey::Aes192 { enc_key, dec_key })
     }
 
-    pub(crate) fn aes256(key_bytes: &[u8]) -> Result<Self, Unspecified> {
+    pub(crate) fn aes256(key_bytes: &[u8]) -> Result<Self, KeyRejected> {
         if key_bytes.len() != AES_256_KEY_LEN {
-            return Err(Unspecified);
+            return Err(KeyRejected::unspecified());
         }
         let (enc_key, dec_key) = SymmetricCipherKey::aes(key_bytes)?;
         Ok(SymmetricCipherKey::Aes256 { enc_key, dec_key })
     }
 
-    pub(crate) fn chacha20(key_bytes: &[u8]) -> Result<Self, Unspecified> {
+    pub(crate) fn chacha20(key_bytes: &[u8]) -> Result<Self, KeyRejected> {
         if key_bytes.len() != 32 {
-            return Err(Unspecified);
+            return Err(KeyRejected::unspecified());
         }
         let mut kb = MaybeUninit::<[u8; 32]>::uninit();
         unsafe {
@@ -144,89 +144,104 @@ impl SymmetricCipherKey {
         }
     }
 
-    #[cfg(feature = "des")]
-    pub(crate) fn des_ede(key_bytes: &[u8]) -> Result<Self, Unspecified> {
+    /// Validates 2TDEA key material and computes the three DES key schedules.
+    ///
+    /// Returns the schedules as `[ks1, ks2, ks1]` (K3 = K1 for 2TDEA).
+    /// This is the shared validation/preparation step used by both
+    /// [`SymmetricCipherKey::des_ede`] and
+    /// [`UnboundCipherKey::validate_key_material`].
+    #[cfg(feature = "legacy-3des")]
+    pub(crate) fn prepare_des_ede(key_bytes: &[u8]) -> Result<[DES_key_schedule; 3], KeyRejected> {
         if key_bytes.len() != DES_EDE_KEY_LEN {
-            return Err(Unspecified);
+            return Err(KeyRejected::unspecified());
         }
-        let mut ks0 = MaybeUninit::<DES_key_schedule>::uninit();
-        let mut ks1 = MaybeUninit::<DES_key_schedule>::uninit();
-        let mut ks2 = MaybeUninit::<DES_key_schedule>::uninit();
-        if -2
-            == unsafe {
-                DES_set_key(
-                    key_bytes[0..8].as_ptr() as *const DES_cblock,
-                    ks0.as_mut_ptr(),
-                )
-            }
-        {
-            return Err(Unspecified);
+        // `as_chunks` is only stable since Rust 1.88.0, so use explicit slicing
+        // instead to stay within the crate's MSRV.
+        let first_key: &[u8; 8] = key_bytes[0..8]
+            .try_into()
+            .map_err(|_| KeyRejected::unspecified())?;
+        let second_key: &[u8; 8] = key_bytes[8..16]
+            .try_into()
+            .map_err(|_| KeyRejected::unspecified())?;
+
+        // SP 800-67 §3.1 requires K1 != K2 for 2-Key TDEA; if they are equal
+        // the cipher degenerates to single-DES (56-bit effective security).
+        if first_key == second_key {
+            return Err(KeyRejected::inconsistent_components());
         }
-        if -2
-            == unsafe {
-                DES_set_key(
-                    key_bytes[8..16].as_ptr() as *const DES_cblock,
-                    ks1.as_mut_ptr(),
-                )
-            }
-        {
-            return Err(Unspecified);
-        }
-        if -2
-            == unsafe {
-                DES_set_key(
-                    key_bytes[0..8].as_ptr() as *const DES_cblock,
-                    ks2.as_mut_ptr(),
-                )
-            }
-        {
-            return Err(Unspecified);
-        }
+
+        // 2TDEA is defined as E_K1(D_K2(E_K1(.))), so K3 is always a copy of
+        // K1. `DES_key_schedule` is `Copy`, so we only need to run the key
+        // schedule for K1 once.
+        let ks1 = Self::des_set_key(first_key)?;
+        let ks2 = Self::des_set_key(second_key)?;
+        Ok([ks1, ks2, ks1])
+    }
+
+    #[cfg(feature = "legacy-3des")]
+    pub(crate) fn des_ede(key_bytes: &[u8]) -> Result<Self, KeyRejected> {
         Ok(SymmetricCipherKey::DesEde {
-            key: DesKey(unsafe { [ks0.assume_init(), ks1.assume_init(), ks2.assume_init()] }),
+            key: DesKey(Self::prepare_des_ede(key_bytes)?),
         })
     }
 
-    #[cfg(feature = "des")]
-    pub(crate) fn des_ede3(key_bytes: &[u8]) -> Result<Self, Unspecified> {
+    #[cfg(feature = "legacy-3des")]
+    fn des_set_key(key_bytes: &[u8; 8]) -> Result<DES_key_schedule, KeyRejected> {
+        let mut ks = MaybeUninit::<DES_key_schedule>::uninit();
+        // DES_set_key return values (see openssl/des.h):
+        //   0  => key is not weak and has odd parity (preferred)
+        //  -1  => key parity is not odd (schedule is still valid; most callers
+        //         do not maintain DES parity bits, so we accept this)
+        //  -2  => key is a weak DES key; reject it
+        // Any other non-zero value is treated as a failure.
+        match unsafe { DES_set_key(key_bytes.as_ptr() as *const DES_cblock, ks.as_mut_ptr()) } {
+            0 | -1 => Ok(unsafe { ks.assume_init() }),
+            _ => Err(KeyRejected::unspecified()),
+        }
+    }
+
+    /// Validates 3TDEA key material and computes the three DES key schedules.
+    ///
+    /// This is the shared validation/preparation step used by both
+    /// [`SymmetricCipherKey::des_ede3`] and
+    /// [`UnboundCipherKey::validate_key_material`].
+    #[cfg(feature = "legacy-3des")]
+    pub(crate) fn prepare_des_ede3(key_bytes: &[u8]) -> Result<[DES_key_schedule; 3], KeyRejected> {
         if key_bytes.len() != DES_EDE3_KEY_LEN {
-            return Err(Unspecified);
+            return Err(KeyRejected::unspecified());
         }
-        let mut ks0 = MaybeUninit::<DES_key_schedule>::uninit();
-        let mut ks1 = MaybeUninit::<DES_key_schedule>::uninit();
-        let mut ks2 = MaybeUninit::<DES_key_schedule>::uninit();
-        if -2
-            == unsafe {
-                DES_set_key(
-                    key_bytes[0..8].as_ptr() as *const DES_cblock,
-                    ks0.as_mut_ptr(),
-                )
-            }
-        {
-            return Err(Unspecified);
+        // `as_chunks` is only stable since Rust 1.88.0, so use explicit slicing
+        // instead to stay within the crate's MSRV.
+        let first_key: &[u8; 8] = key_bytes[0..8]
+            .try_into()
+            .map_err(|_| KeyRejected::unspecified())?;
+        let second_key: &[u8; 8] = key_bytes[8..16]
+            .try_into()
+            .map_err(|_| KeyRejected::unspecified())?;
+        let third_key: &[u8; 8] = key_bytes[16..24]
+            .try_into()
+            .map_err(|_| KeyRejected::unspecified())?;
+
+        // SP 800-67r2 Appendix A: for 3-Key TDEA, K1, K2 and K3 should be
+        // independently chosen. We enforce that all three subkeys are
+        // distinct. Callers who want the `K1 ‖ K2 ‖ K1` (2TDEA) form must
+        // use `DES_EDE_FOR_LEGACY_USE_ONLY` with a 16-byte key instead of
+        // encoding 2TDEA as a 24-byte 3TDEA key.
+        if first_key == second_key || second_key == third_key || first_key == third_key {
+            return Err(KeyRejected::inconsistent_components());
         }
-        if -2
-            == unsafe {
-                DES_set_key(
-                    key_bytes[8..16].as_ptr() as *const DES_cblock,
-                    ks1.as_mut_ptr(),
-                )
-            }
-        {
-            return Err(Unspecified);
-        }
-        if -2
-            == unsafe {
-                DES_set_key(
-                    key_bytes[16..24].as_ptr() as *const DES_cblock,
-                    ks2.as_mut_ptr(),
-                )
-            }
-        {
-            return Err(Unspecified);
-        }
+
+        Ok([
+            Self::des_set_key(first_key)?,
+            Self::des_set_key(second_key)?,
+            Self::des_set_key(third_key)?,
+        ])
+    }
+
+    #[cfg(feature = "legacy-3des")]
+    pub(crate) fn des_ede3(key_bytes: &[u8]) -> Result<Self, KeyRejected> {
         Ok(SymmetricCipherKey::DesEde3 {
-            key: DesKey(unsafe { [ks0.assume_init(), ks1.assume_init(), ks2.assume_init()] }),
+            key: DesKey(Self::prepare_des_ede3(key_bytes)?),
         })
     }
 
@@ -242,7 +257,7 @@ impl SymmetricCipherKey {
             SymmetricCipherKey::ChaCha20 { .. } => {
                 panic!("Unsupported algorithm!")
             }
-            #[cfg(feature = "des")]
+            #[cfg(feature = "legacy-3des")]
             SymmetricCipherKey::DesEde { .. } | SymmetricCipherKey::DesEde3 { .. } => {
                 panic!("Unsupported algorithm!")
             }

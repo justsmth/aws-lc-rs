@@ -6,9 +6,9 @@ use aws_lc_rs::cipher::{
     PaddedBlockDecryptingKey, PaddedBlockEncryptingKey, StreamingDecryptingKey,
     StreamingEncryptingKey, UnboundCipherKey, AES_128, AES_192, AES_256,
 };
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 #[allow(deprecated)]
-use aws_lc_rs::cipher::{DES_EDE, DES_EDE3};
+use aws_lc_rs::cipher::{DES_EDE3_FOR_LEGACY_USE_ONLY, DES_EDE_FOR_LEGACY_USE_ONLY};
 use aws_lc_rs::iv::{FixedLength, IV_LEN_128_BIT};
 use aws_lc_rs::test;
 use aws_lc_rs::test::from_hex;
@@ -1114,12 +1114,12 @@ unpadded_cipher_kat!(
     "00112233445566778899aabbccddee"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 macro_rules! des_streaming_cipher_kat {
     ($name:ident, $alg:expr, $mode:expr, ecb_pkcs7, $key:literal, $plaintext:literal, $ciphertext:literal, $from_step:literal, $to_step:literal) => {
         paste! {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn [<$name _streaming>]() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1146,8 +1146,8 @@ macro_rules! des_streaming_cipher_kat {
 
     ($name:ident, $alg:expr, $mode:expr, $constructor:ident, $key:literal, $iv:literal, $plaintext:literal, $ciphertext:literal, $from_step:literal, $to_step:literal) => {
         paste! {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn [<$name _streaming>]() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1177,12 +1177,12 @@ macro_rules! des_streaming_cipher_kat {
     };
 }
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 macro_rules! des_streaming_cipher_rt {
     ($name:ident, $alg:expr, $mode:expr, $constructor:ident, $key:literal, $plaintext:literal, $from_step:literal, $to_step:literal) => {
         paste! {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn [<$name _streaming>]() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1205,11 +1205,11 @@ macro_rules! des_streaming_cipher_rt {
     };
 }
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 macro_rules! des_cipher_kat {
     ($name:ident, $alg:expr, $mode:expr, $constructor:ident, $key:literal, $iv:literal, $plaintext:literal, $ciphertext:literal) => {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn $name() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1242,8 +1242,8 @@ macro_rules! des_cipher_kat {
     };
 
     ($name:ident, $alg:expr, $mode:expr, $constructor:ident, $key:literal, $iv:literal, $plaintext:literal) => {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn $name() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1267,11 +1267,11 @@ macro_rules! des_cipher_kat {
     };
 }
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 macro_rules! des_padded_cipher_kat {
     ($name:ident, $alg:expr, $mode:expr, ecb_pkcs7, $key:literal, $iv:literal, $plaintext:literal, $ciphertext:literal) => {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn $name() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1309,8 +1309,8 @@ macro_rules! des_padded_cipher_kat {
     };
 
     ($name:ident, $alg:expr, $mode:expr, $constructor:ident, $key:literal, $iv:literal, $plaintext:literal, $ciphertext:literal) => {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn $name() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1356,11 +1356,11 @@ macro_rules! des_padded_cipher_kat {
     };
 }
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 macro_rules! des_cipher_rt {
     ($name:ident, $alg:expr, $mode:expr, $constructor:ident, $key:literal, $plaintext:literal) => {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn $name() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1383,11 +1383,11 @@ macro_rules! des_cipher_rt {
     };
 }
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 macro_rules! des_padded_cipher_rt {
     ($name:ident, $alg:expr, $mode:expr, $constructor:ident, $key:literal, $plaintext:literal) => {
-        #[allow(deprecated)]
         #[test]
+        #[allow(deprecated)]
         fn $name() {
             let key = from_hex($key).unwrap();
             let input = from_hex($plaintext).unwrap();
@@ -1411,10 +1411,10 @@ macro_rules! des_padded_cipher_rt {
     };
 }
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_kat!(
     test_kat_des_ede_cbc_32_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc,
     "0123456789abcdef23456789abcdef01",
@@ -1423,10 +1423,10 @@ des_cipher_kat!(
     "7401ce1eab6d003caff84bf47b36cc2154f0238f9ffecd8f6acf118392b45581"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_kat!(
     test_kat_des_ede3_cbc_32_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
@@ -1435,10 +1435,10 @@ des_cipher_kat!(
     "2079c3d53aa763e193b79e2569ab5262516570481f25b50f73c0bda85c8e0da7"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_kat!(
     test_kat_des_ede_ecb_32_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb,
     "0123456789abcdef23456789abcdef01",
@@ -1447,10 +1447,10 @@ des_cipher_kat!(
     "06ede3d82884090aff322c19f0518486730576972a666e58b6c88cf107340d3d"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_kat!(
     test_kat_des_ede3_ecb_32_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
@@ -1459,10 +1459,10 @@ des_cipher_kat!(
     "714772f339841d34267fcc4bd2949cc3ee11c22a576a303876183f99c0b6de87"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_kat!(
     test_kat_des_ede_cbc_31_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc,
     "0123456789abcdef23456789abcdef01",
@@ -1470,10 +1470,10 @@ des_cipher_kat!(
     "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_kat!(
     test_kat_des_ede3_cbc_31_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
@@ -1481,10 +1481,10 @@ des_cipher_kat!(
     "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_kat!(
     test_kat_des_ede_ecb_31_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb,
     "0123456789abcdef23456789abcdef01",
@@ -1492,10 +1492,10 @@ des_cipher_kat!(
     "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_kat!(
     test_kat_des_ede3_ecb_31_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
@@ -1503,50 +1503,50 @@ des_cipher_kat!(
     "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_rt!(
     test_rt_des_ede_cbc_32_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc,
     "0123456789abcdef23456789abcdef01",
     "4e6f77206973207468652074696d6520666f7220616c6c20206d656e20746f20"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_rt!(
     test_rt_des_ede3_cbc_32_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
     "4e6f77206973207468652074696d6520666f7220616c6c20206d656e20746f20"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_rt!(
     test_rt_des_ede_ecb_32_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb,
     "0123456789abcdef23456789abcdef01",
     "4e6f77206973207468652074696d6520666f7220616c6c20206d656e20746f20"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_cipher_rt!(
     test_rt_des_ede3_ecb_32_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
     "4e6f77206973207468652074696d6520666f7220616c6c20206d656e20746f20"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_padded_cipher_kat!(
     test_kat_des_ede_cbc_pkcs7_32_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc_pkcs7,
     "0123456789abcdef23456789abcdef01",
@@ -1555,10 +1555,10 @@ des_padded_cipher_kat!(
     "7401ce1eab6d003caff84bf47b36cc2154f0238f9ffecd8f6acf118392b45581dcb0d2607c9dd8a3"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_padded_cipher_kat!(
     test_kat_des_ede3_cbc_pkcs7_32_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc_pkcs7,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
@@ -1567,10 +1567,10 @@ des_padded_cipher_kat!(
     "2079c3d53aa763e193b79e2569ab5262516570481f25b50f73c0bda85c8e0da733830d1a78387028"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_padded_cipher_kat!(
     test_kat_des_ede_ecb_pkcs7_32_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb_pkcs7,
     "0123456789abcdef23456789abcdef01",
@@ -1579,10 +1579,10 @@ des_padded_cipher_kat!(
     "06ede3d82884090aff322c19f0518486730576972a666e58b6c88cf107340d3d5db28100613ac225"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_padded_cipher_kat!(
     test_kat_des_ede3_ecb_pkcs7_32_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb_pkcs7,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
@@ -1591,40 +1591,40 @@ des_padded_cipher_kat!(
     "714772f339841d34267fcc4bd2949cc3ee11c22a576a303876183f99c0b6de87832846b52f9e213d"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_padded_cipher_rt!(
     test_rt_des_ede_cbc_pkcs7_31_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc_pkcs7,
     "0123456789abcdef23456789abcdef01",
     "4e6f77206973207468652074696d6520666f7220616c6c20206d656e20746f"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_padded_cipher_rt!(
     test_rt_des_ede3_cbc_pkcs7_31_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::CBC,
     cbc_pkcs7,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
     "4e6f77206973207468652074696d6520666f7220616c6c20206d656e20746f"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_padded_cipher_rt!(
     test_rt_des_ede_ecb_pkcs7_31_bytes,
-    &DES_EDE,
+    &DES_EDE_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb_pkcs7,
     "0123456789abcdef23456789abcdef01",
     "4e6f77206973207468652074696d6520666f7220616c6c20206d656e20746f"
 );
 
-#[cfg(feature = "des")]
+#[cfg(feature = "legacy-3des")]
 des_padded_cipher_rt!(
     test_rt_des_ede3_ecb_pkcs7_31_bytes,
-    &DES_EDE3,
+    &DES_EDE3_FOR_LEGACY_USE_ONLY,
     OperatingMode::ECB,
     ecb_pkcs7,
     "0123456789abcdef23456789abcdef01456789abcdef0123",
