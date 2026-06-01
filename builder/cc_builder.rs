@@ -368,7 +368,8 @@ impl CcBuilder {
         }
 
         let mut cc_build = self.create_builder();
-        let (_, build_options) = self.collect_universal_build_options(&cc_build, false);
+        let (compiler_is_msvc, build_options) =
+            self.collect_universal_build_options(&cc_build, false);
         for option in build_options {
             option.apply_cc(&mut cc_build);
         }
@@ -378,6 +379,39 @@ impl CcBuilder {
         // See: https://github.com/aws/aws-lc/blob/main/crypto/CMakeLists.txt#L77
         if target_os() == "linux" || target_os().ends_with("bsd") {
             cc_build.asm_flag("-Wa,--noexecstack");
+        }
+
+        // Mirror the C-level `-ffile-prefix-map` for assembly. GCC processes
+        // `-ffile-prefix-map` in the C frontend (`cc1`), but for `.S` files
+        // the driver invokes the external GNU assembler, which emits its own
+        // DWARF `.debug_line` and does NOT honor `-ffile-prefix-map`. Pass
+        // `--debug-prefix-map` directly via `-Wa,...` so absolute build-time
+        // paths to .S source files are stripped from assembler DWARF in
+        // release builds. We feature-detect with `is_flag_supported` because
+        // clang's integrated assembler (Linux, macOS) rejects unrecognized
+        // `-Wa,...` options; clang's IA already honors `-ffile-prefix-map`
+        // natively for `.S` files, so skipping the flag there is correct.
+        // The Linux/BSD platform gate is a fast path to avoid the probe on
+        // platforms where the flag is never applicable.
+        //
+        // Also skip when the manifest path contains spaces: unlike
+        // `-ffile-prefix-map` (where the compiler parses quoted paths),
+        // `-Wa,...=PATH=` must be a single bare token. The assembler treats
+        // quotes literally, so there is no portable way to embed a path with
+        // spaces. Spaces-in-path consumers forgo asm DWARF path-stripping
+        // for `.S` files; the C-level `-ffile-prefix-map` is unaffected and
+        // still applies.
+        let opt_level = cargo_env("OPT_LEVEL");
+        if (target_os() == "linux" || target_os().ends_with("bsd"))
+            && !compiler_is_msvc
+            && !matches!(opt_level.as_str(), "0" | "1" | "2")
+            && !self.manifest_dir.to_string_lossy().contains(' ')
+        {
+            let path_str = self.manifest_dir.display().to_string();
+            let asm_flag = format!("-Wa,--debug-prefix-map={path_str}=");
+            if cc_build.is_flag_supported(&asm_flag).unwrap_or(false) {
+                cc_build.asm_flag(asm_flag);
+            }
         }
 
         cc_build
