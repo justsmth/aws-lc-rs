@@ -102,6 +102,39 @@ impl CmakeBuilder {
         for option in &build_options {
             option.apply_cmake(cmake_cfg, is_like_msvc);
         }
+
+        // Mirror the cc-builder's `-Wa,--debug-prefix-map` for assembly.
+        // CMake's `cflag()` only seeds `CMAKE_C_FLAGS`; `CMAKE_ASM_FLAGS` is a
+        // separate variable, and AWS-LC's `crypto/CMakeLists.txt` adds `-g`
+        // to `CMAKE_ASM_FLAGS` for both Debug and RelWithDebInfo builds.
+        // Without `--debug-prefix-map` for the assembler, absolute build-time
+        // paths to `.S` source files leak into the resulting archive via
+        // assembler DWARF. Seeding `CMAKE_ASM_FLAGS_INIT` via `asmflag()`
+        // composes cleanly with AWS-LC's append-pattern
+        // (`set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ...")`). We feature-detect
+        // with `is_flag_supported` because clang's integrated assembler
+        // rejects unrecognized `-Wa,...` options; clang's IA honors
+        // `-ffile-prefix-map` natively for `.S` files, so skipping the flag
+        // there is correct.
+        //
+        // Also skip when the manifest path contains spaces: CMake passes
+        // `CMAKE_ASM_FLAGS` as a single string that is later word-split, and
+        // the FIPS delocator pipeline likewise re-splits it via `-cc-flags`.
+        // Quoting does not help because the assembler treats quotes
+        // literally and the path-prefix match would fail. Spaces-in-path
+        // consumers forgo asm DWARF path-stripping for `.S` files; the
+        // C-level `-ffile-prefix-map` is unaffected and still applies.
+        if !is_like_msvc
+            && (target_os() == "linux" || target_os().ends_with("bsd"))
+            && !self.manifest_dir.to_string_lossy().contains(' ')
+        {
+            let path_str = self.manifest_dir.display().to_string();
+            let asm_flag = format!("-Wa,--debug-prefix-map={path_str}=");
+            if cc_build.is_flag_supported(&asm_flag).unwrap_or(false) {
+                cmake_cfg.asmflag(asm_flag);
+            }
+        }
+
         cmake_cfg
     }
 
