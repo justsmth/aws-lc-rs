@@ -3,8 +3,8 @@
 
 use crate::system_library::ResolvedLib;
 use crate::{
-    cargo_env, emit_warning, execute_command, is_lto_flag, out_dir, target, target_os,
-    OutputLibType,
+    cargo_env, emit_warning, execute_command, is_lto_flag, out_dir, target, target_is_msvc,
+    target_os, OutputLibType,
 };
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -112,8 +112,11 @@ pub(crate) fn compile_fips_probe(
 
     let cc_build = cc::Build::new();
     let compiler = cc_build.get_compiler();
-    let is_msvc = compiler.is_like_msvc();
-    if !(compiler.is_like_clang() || compiler.is_like_gnu() || is_msvc) {
+    // Supported-compiler gate, keyed on the compiler family (the property
+    // actually being checked). Every cc `ToolFamily` is one of Gnu/Clang/Msvc,
+    // so this is currently always satisfied; it is retained to guard against
+    // future families and to surface a clear error if detection ever changes.
+    if !(compiler.is_like_clang() || compiler.is_like_gnu() || compiler.is_like_msvc()) {
         return Err(format!(
             "FIPS verification requires a Clang-, GCC-, or MSVC-compatible compiler; \
              {} is not supported. Set CC to a supported compiler.",
@@ -124,7 +127,9 @@ pub(crate) fn compile_fips_probe(
     let mut args = inherited_probe_args(&compiler);
     append_probe_link_args(
         &mut args,
-        is_msvc,
+        // Link-flag dialect is a property of the target ABI, not the probed
+        // compiler family; see `target_is_msvc`.
+        target_is_msvc(),
         include_dir,
         crypto_lib,
         lib_dir,

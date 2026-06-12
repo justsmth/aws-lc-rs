@@ -498,6 +498,20 @@ fn target_env() -> String {
     cargo_env("CARGO_CFG_TARGET_ENV")
 }
 
+/// Whether the target ABI is MSVC (a `*-pc-windows-msvc` target).
+///
+/// On these targets the C toolchain is always driven in cl mode (`cl.exe` or
+/// `clang-cl`), so this is the authoritative signal for selecting cl-style flag
+/// *dialect* (`/Fo`, `/FI`, `/Od`, no `--param ...`) and the MSVC CRT/SDK
+/// behavior. Prefer this over `cc::Tool::is_like_msvc()`, whose best-effort
+/// compiler-family probe can misclassify `clang-cl` (e.g. under cargo-xwin) and
+/// cause GNU-only flags to be emitted to a cl-mode driver.
+/// See: https://github.com/aws/aws-lc-rs/issues/1146
+#[allow(unused)]
+fn target_is_msvc() -> bool {
+    target_env() == "msvc"
+}
+
 #[allow(unused)]
 fn target_vendor() -> String {
     cargo_env("CARGO_CFG_TARGET_VENDOR")
