@@ -434,8 +434,10 @@ impl CcBuilder {
         }
     }
 
-    fn prepare_jitter_entropy_builder(&self, is_msvc_target: bool) -> cc::Build {
+    fn prepare_jitter_entropy_builder(&self) -> cc::Build {
         // See: https://github.com/aws/aws-lc/blob/2294510cd0ecb2d5946461e3dbb038363b7b94cb/third_party/jitterentropy/CMakeLists.txt#L19-L35
+        // Dialect is owned here, sourced from the target ABI; see `target_is_msvc`.
+        let is_msvc_target = target_is_msvc();
         let mut build_options: Vec<BuildOption> = Vec::new();
         self.add_includes(&mut build_options);
         self.add_defines(&mut build_options, is_msvc_target);
@@ -454,27 +456,39 @@ impl CcBuilder {
         if target_os() != "windows" {
             je_builder.pic(true);
         }
-        if is_msvc_target {
-            je_builder.flag("-Od").flag("-W4").flag("-DYNAMICBASE");
-        } else {
-            je_builder
-                .flag("-fwrapv")
-                .flag("--param")
-                .flag("ssp-buffer-size=4")
-                .flag("-fvisibility=hidden")
-                .flag("-Wcast-align")
-                .flag("-Wmissing-field-initializers")
-                .flag("-Wshadow")
-                .flag("-Wswitch-enum")
-                .flag("-Wextra")
-                .flag("-Wall")
-                .flag("-pedantic")
-                // Compilation will fail if optimizations are enabled.
-                .flag("-O0")
-                .flag("-fwrapv")
-                .flag("-Wconversion");
+        for &flag in Self::jitter_entropy_dialect_flags(is_msvc_target) {
+            je_builder.flag(flag);
         }
         je_builder
+    }
+
+    /// Dialect-specific compiler flags for the jitterentropy sub-build.
+    ///
+    /// Keyed on the target ABI (`target_is_msvc`), not `cc`'s compiler-family
+    /// probe: the GNU-only `--param ssp-buffer-size=4` pair is rejected by
+    /// `clang-cl` in cl mode. See: https://github.com/aws/aws-lc-rs/issues/1146
+    fn jitter_entropy_dialect_flags(is_msvc_target: bool) -> &'static [&'static str] {
+        if is_msvc_target {
+            &["-Od", "-W4", "-DYNAMICBASE"]
+        } else {
+            &[
+                "-fwrapv",
+                "--param",
+                "ssp-buffer-size=4",
+                "-fvisibility=hidden",
+                "-Wcast-align",
+                "-Wmissing-field-initializers",
+                "-Wshadow",
+                "-Wswitch-enum",
+                "-Wextra",
+                "-Wall",
+                "-pedantic",
+                // Compilation will fail if optimizations are enabled.
+                "-O0",
+                "-fwrapv",
+                "-Wconversion",
+            ]
+        }
     }
 
     /// The cc crate appends CFLAGS at the end of the compiler command line,
@@ -540,7 +554,7 @@ impl CcBuilder {
         s2n_bignum_builder.define("S2N_BN_HIDE_SYMBOLS", "1");
 
         // CPU Jitter Entropy is compiled separately due to needing specific flags
-        let mut jitter_entropy_builder = self.prepare_jitter_entropy_builder(is_msvc_target);
+        let mut jitter_entropy_builder = self.prepare_jitter_entropy_builder();
         jitter_entropy_builder.flag(format!(
             "{}{}",
             force_include_option,
@@ -886,5 +900,54 @@ impl crate::Builder for CcBuilder {
 
     fn name(&self) -> &'static str {
         "CC"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{EnvGuard, ENV_MUTEX};
+
+    /// Runs `f` with `CARGO_CFG_TARGET_ENV` forced to `env_val`, restoring the
+    /// previous value afterward. Holds the shared env lock so it doesn't race
+    /// other env-mutating builder tests.
+    fn with_target_env<R>(env_val: &str, f: impl FnOnce() -> R) -> R {
+        let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = EnvGuard::new("CARGO_CFG_TARGET_ENV", env_val);
+        f()
+    }
+
+    #[test]
+    fn test_target_is_msvc_matches_msvc_abi_only() {
+        assert!(with_target_env("msvc", target_is_msvc));
+        assert!(!with_target_env("gnu", target_is_msvc));
+        assert!(!with_target_env("musl", target_is_msvc));
+        assert!(!with_target_env("", target_is_msvc));
+    }
+
+    // Guards https://github.com/aws/aws-lc-rs/issues/1146. Asserts the
+    // MSVC-target dialect never selects the GNU-only `--param ssp-buffer-size=4`
+    // (rejected by `clang-cl`), independent of how `cc` probes the host compiler.
+    #[test]
+    fn test_jitter_entropy_flags_for_msvc_target_omit_gnu_only() {
+        let msvc = with_target_env("msvc", || {
+            CcBuilder::jitter_entropy_dialect_flags(target_is_msvc())
+        });
+        assert!(
+            !msvc.contains(&"--param") && !msvc.contains(&"ssp-buffer-size=4"),
+            "MSVC-target jitter flags must not contain the GNU-only ssp-buffer-size pair: {msvc:?}"
+        );
+        assert!(msvc.contains(&"-Od"), "expected cl-style -Od: {msvc:?}");
+    }
+
+    #[test]
+    fn test_jitter_entropy_gnu_dialect_keeps_hardening_flags() {
+        let gnu = with_target_env("gnu", || {
+            CcBuilder::jitter_entropy_dialect_flags(target_is_msvc())
+        });
+        assert!(gnu.contains(&"--param"));
+        assert!(gnu.contains(&"ssp-buffer-size=4"));
+        // jitterentropy must always be built unoptimized.
+        assert!(gnu.contains(&"-O0"), "expected -O0: {gnu:?}");
     }
 }
