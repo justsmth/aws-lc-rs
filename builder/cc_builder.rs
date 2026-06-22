@@ -105,6 +105,12 @@ impl BuildOption {
     fn flag<T: ToString + ?Sized>(val: &T) -> Self {
         Self::FLAG(val.to_string())
     }
+    fn flag_value(&self) -> Option<&str> {
+        match self {
+            Self::FLAG(val) => Some(val),
+            _ => None,
+        }
+    }
     fn flag_if_supported<T: ToString + ?Sized>(cc_build: &cc::Build, flag: &T) -> Option<Self> {
         if let Ok(true) = cc_build.is_flag_supported(flag.to_string()) {
             Some(Self::FLAG(flag.to_string()))
@@ -232,40 +238,22 @@ impl CcBuilder {
             build_options.push(BuildOption::define("_DARWIN_C_SOURCE", "1"));
         }
 
-        let opt_level = cargo_env("OPT_LEVEL");
-        match opt_level.as_str() {
-            "0" | "1" | "2" => {
-                if is_no_asm() {
-                    emit_warning("AWS_LC_SYS_NO_ASM found. Disabling assembly code usage.");
-                    build_options.push(BuildOption::define("OPENSSL_NO_ASM", "1"));
-                }
-            }
-            _ => {
-                assert!(
-                    !is_no_asm(),
-                    "AWS_LC_SYS_NO_ASM only allowed for debug builds!"
-                );
-                if !compiler_is_msvc {
-                    let path_str = if do_quote_paths {
-                        format!("\"{}\"", self.manifest_dir.display())
-                    } else {
-                        format!("{}", self.manifest_dir.display())
-                    };
+        if Self::should_strip_build_paths() {
+            assert!(
+                !is_no_asm(),
+                "AWS_LC_SYS_NO_ASM only allowed for debug builds!"
+            );
 
-                    let flag = format!("-ffile-prefix-map={path_str}=");
-                    if let Ok(true) = cc_build.is_flag_supported(&flag) {
-                        emit_warning(format!("Using flag: {flag}"));
-                        build_options.push(BuildOption::flag(&flag));
-                    } else {
-                        emit_warning("NOTICE: Build environment source paths might be visible in release binary.");
-                        let flag = format!("-fdebug-prefix-map={path_str}=");
-                        if let Ok(true) = cc_build.is_flag_supported(&flag) {
-                            emit_warning(format!("Using flag: {flag}"));
-                            build_options.push(BuildOption::flag(&flag));
-                        }
-                    }
-                }
-            }
+            let path_options = self.collect_path_reproducibility_options(
+                cc_build,
+                compiler_is_msvc,
+                do_quote_paths,
+            );
+            Self::warn_for_prefix_map_option(&path_options, compiler_is_msvc);
+            build_options.extend(path_options);
+        } else if is_no_asm() {
+            emit_warning("AWS_LC_SYS_NO_ASM found. Disabling assembly code usage.");
+            build_options.push(BuildOption::define("OPENSSL_NO_ASM", "1"));
         }
 
         if target_os() == "macos" {
@@ -381,21 +369,10 @@ impl CcBuilder {
             cc_build.asm_flag("-Wa,--noexecstack");
         }
 
-        // `-ffile-prefix-map` does not reach GNU `as` for `.S` sources, so in
-        // release-style builds mirror it with `-Wa,--debug-prefix-map=...`.
-        // Probe first because clang's integrated assembler rejects the flag,
-        // and skip paths with spaces because `-Wa,...` must stay a bare token.
-        let opt_level = cargo_env("OPT_LEVEL");
-        if (target_os() == "linux" || target_os().ends_with("bsd"))
-            && !compiler_is_msvc
-            && !matches!(opt_level.as_str(), "0" | "1" | "2")
-            && !self.manifest_dir.to_string_lossy().contains(' ')
+        if let Some(asm_flag) =
+            self.supported_assembler_prefix_map_flag(&cc_build, compiler_is_msvc, false)
         {
-            let path_str = self.manifest_dir.display().to_string();
-            let asm_flag = format!("-Wa,--debug-prefix-map={path_str}=");
-            if cc_build.is_flag_supported(&asm_flag).unwrap_or(false) {
-                cc_build.asm_flag(asm_flag);
-            }
+            cc_build.asm_flag(asm_flag);
         }
 
         cc_build
@@ -502,7 +479,7 @@ impl CcBuilder {
         // Jitter uses a separate `cc::Build`, so it needs its own path-mapping
         // flags even when the main builder already has them. Apply them here
         // unconditionally because jitter is always compiled at `-O0`.
-        for option in self.collect_path_reproducibility_options(&je_builder, is_like_msvc) {
+        for option in self.collect_path_reproducibility_options(&je_builder, is_like_msvc, false) {
             option.apply_cc(&mut je_builder);
         }
         je_builder
@@ -515,24 +492,15 @@ impl CcBuilder {
         &self,
         cc_build: &cc::Build,
         is_like_msvc: bool,
+        do_quote_paths: bool,
     ) -> Vec<BuildOption> {
         let mut opts: Vec<BuildOption> = Vec::new();
         if is_like_msvc {
             return opts;
         }
 
-        let path_str = self.manifest_dir.display().to_string();
-
-        // Prefer the flag that rewrites both `__FILE__` and DWARF; older GCC
-        // may only support `-fdebug-prefix-map`.
-        let file_flag = format!("-ffile-prefix-map={path_str}=");
-        if cc_build.is_flag_supported(&file_flag).unwrap_or(false) {
-            opts.push(BuildOption::flag(&file_flag));
-        } else {
-            let dbg_flag = format!("-fdebug-prefix-map={path_str}=");
-            if cc_build.is_flag_supported(&dbg_flag).unwrap_or(false) {
-                opts.push(BuildOption::flag(&dbg_flag));
-            }
+        if let Some(option) = self.supported_prefix_map_option(cc_build, do_quote_paths) {
+            opts.push(option);
         }
 
         // Clang UBSan metadata can still carry the full source path at `-O0`.
@@ -544,6 +512,119 @@ impl CcBuilder {
         }
 
         opts
+    }
+
+    fn should_strip_build_paths() -> bool {
+        !matches!(cargo_env("OPT_LEVEL").as_str(), "0" | "1" | "2")
+    }
+
+    fn supported_prefix_map_option(
+        &self,
+        cc_build: &cc::Build,
+        do_quote_paths: bool,
+    ) -> Option<BuildOption> {
+        self.supported_prefix_map_flag(cc_build, do_quote_paths)
+            .map(|flag| BuildOption::flag(&flag))
+    }
+
+    fn supported_prefix_map_flag(
+        &self,
+        cc_build: &cc::Build,
+        do_quote_paths: bool,
+    ) -> Option<String> {
+        let path_str = if do_quote_paths {
+            format!("\"{}\"", self.manifest_dir.display())
+        } else {
+            self.manifest_dir.display().to_string()
+        };
+
+        // Prefer the flag that rewrites both `__FILE__` and DWARF; older GCC
+        // may only support `-fdebug-prefix-map`.
+        let file_flag = format!("-ffile-prefix-map={path_str}=");
+        if cc_build.is_flag_supported(&file_flag).unwrap_or(false) {
+            return Some(file_flag);
+        }
+
+        let dbg_flag = format!("-fdebug-prefix-map={path_str}=");
+        if cc_build.is_flag_supported(&dbg_flag).unwrap_or(false) {
+            Some(dbg_flag)
+        } else {
+            None
+        }
+    }
+
+    fn warn_for_prefix_map_option(path_options: &[BuildOption], is_like_msvc: bool) {
+        if is_like_msvc {
+            return;
+        }
+
+        let prefix_map_flag = path_options
+            .iter()
+            .filter_map(BuildOption::flag_value)
+            .find(|flag| {
+                flag.starts_with("-ffile-prefix-map=") || flag.starts_with("-fdebug-prefix-map=")
+            });
+
+        match prefix_map_flag {
+            Some(flag) => {
+                if flag.starts_with("-fdebug-prefix-map=") {
+                    emit_warning(
+                        "NOTICE: Build environment source paths might be visible in release binary.",
+                    );
+                }
+                emit_warning(format!("Using flag: {flag}"));
+            }
+            None => {
+                emit_warning(
+                    "NOTICE: Build environment source paths might be visible in release binary.",
+                );
+            }
+        }
+    }
+
+    /// Returns an assembler flag that strips `manifest_dir` from `.S` source
+    /// DWARF. GNU as needs `--debug-prefix-map`; Apple's integrated assembler
+    /// honors the same prefix-map flag used for C sources.
+    pub(crate) fn supported_assembler_prefix_map_flag(
+        &self,
+        cc_build: &cc::Build,
+        is_like_msvc: bool,
+        do_quote_paths: bool,
+    ) -> Option<String> {
+        if !Self::should_strip_assembler_build_paths(is_like_msvc) {
+            return None;
+        }
+
+        if target_vendor() == "apple" {
+            return self.supported_prefix_map_flag(cc_build, do_quote_paths);
+        }
+
+        if !self.manifest_dir_supports_wa_prefix_map() {
+            return None;
+        }
+
+        let path_str = self.manifest_dir.display().to_string();
+        let asm_flag = format!("-Wa,--debug-prefix-map={path_str}=");
+        if cc_build.is_flag_supported(&asm_flag).unwrap_or(false) {
+            Some(asm_flag)
+        } else {
+            None
+        }
+    }
+
+    fn should_strip_assembler_build_paths(is_like_msvc: bool) -> bool {
+        if is_like_msvc || !Self::should_strip_build_paths() {
+            return false;
+        }
+
+        target_vendor() == "apple" || target_os() == "linux" || target_os().ends_with("bsd")
+    }
+
+    fn manifest_dir_supports_wa_prefix_map(&self) -> bool {
+        let manifest_dir = self.manifest_dir.to_string_lossy();
+        // `-Wa,...` is comma-split by the compiler driver and must also stay a
+        // single shell/CMake token.
+        !manifest_dir.contains(' ') && !manifest_dir.contains(',')
     }
 
     /// The cc crate appends CFLAGS at the end of the compiler command line,
