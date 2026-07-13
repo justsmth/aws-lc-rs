@@ -561,6 +561,10 @@ fn target() -> String {
     cargo_env("TARGET")
 }
 
+pub(crate) fn is_cross_compiling() -> bool {
+    cargo_env("HOST") != target()
+}
+
 fn crate_name() -> String {
     cargo_env("CARGO_PKG_NAME")
 }
@@ -1051,17 +1055,36 @@ fn use_no_u1_bindings() -> Option<bool> {
     unsafe { SYS_NO_U1_BINDINGS }
 }
 
+// Per the cc-rs convention, `TARGET_*` vars apply only when cross-compiling and
+// `HOST_*` vars only to native builds. This keeps cross-target flags out of the
+// host build when this crate is compiled for both in one cargo invocation
+// (e.g., as a transitive build-dependency).
+// See: https://github.com/aws/aws-lc-rs/issues/1169
 fn get_crate_cc() -> Option<String> {
-    optional_env_optional_crate_target("TARGET_CC").or(optional_env_optional_crate_target("CC"))
+    let host_or_target = if is_cross_compiling() {
+        optional_env_optional_crate_target("TARGET_CC")
+    } else {
+        optional_env_optional_crate_target("HOST_CC")
+    };
+    host_or_target.or(optional_env_optional_crate_target("CC"))
 }
 
 fn get_crate_cxx() -> Option<String> {
-    optional_env_optional_crate_target("TARGET_CXX").or(optional_env_optional_crate_target("CXX"))
+    let host_or_target = if is_cross_compiling() {
+        optional_env_optional_crate_target("TARGET_CXX")
+    } else {
+        optional_env_optional_crate_target("HOST_CXX")
+    };
+    host_or_target.or(optional_env_optional_crate_target("CXX"))
 }
 
 fn get_crate_cflags() -> Option<String> {
-    optional_env_optional_crate_target("TARGET_CFLAGS")
-        .or(optional_env_optional_crate_target("CFLAGS"))
+    let host_or_target = if is_cross_compiling() {
+        optional_env_optional_crate_target("TARGET_CFLAGS")
+    } else {
+        optional_env_optional_crate_target("HOST_CFLAGS")
+    };
+    host_or_target.or(optional_env_optional_crate_target("CFLAGS"))
 }
 
 fn use_prebuilt_nasm() -> bool {

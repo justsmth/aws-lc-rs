@@ -20,9 +20,10 @@ mod win_x86_64;
 use crate::nasm_builder::NasmBuilder;
 use crate::{
     cargo_env, compiler_is_cl_like, emit_warning, env_var_to_bool, execute_command, find_clang_cl,
-    get_crate_cc, get_crate_cflags, get_crate_cxx, is_link_whole_archive, is_no_asm, out_dir,
-    requested_c_std, set_env_for_target, should_build_jitter_entropy, target, target_arch,
-    target_env, target_is_msvc, target_os, target_vendor, CStdRequested, EnvGuard, OutputLibType,
+    get_crate_cc, get_crate_cflags, get_crate_cxx, is_cross_compiling, is_link_whole_archive,
+    is_no_asm, out_dir, requested_c_std, set_env_for_target, should_build_jitter_entropy, target,
+    target_arch, target_env, target_is_msvc, target_os, target_vendor, CStdRequested, EnvGuard,
+    OutputLibType,
 };
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -805,7 +806,7 @@ impl CcBuilder {
         // (HOST != TARGET), we cannot execute the resulting binary, so we skip this check.
         // This also avoids linker configuration issues with cross-compilation toolchains
         // (e.g., cross-rs Darwin toolchains that set invalid -fuse-ld= flags in CFLAGS).
-        if cargo_env("HOST") != target() {
+        if is_cross_compiling() {
             return;
         }
 
@@ -825,6 +826,15 @@ impl CcBuilder {
         // requires -fuse-ld=lld). This matches the CMake build which only passes
         // CMAKE_C_FLAGS_RELEASE (-O3) to check_run().
         let mut memcmp_compile_args: Vec<std::ffi::OsString> = vec!["-O3".into()];
+
+        // CFLAGS is ignored (above) but LDFLAGS is honored (below), so hardened
+        // environments (e.g. RPM's redhat-rpm-config) can force -pie at link time
+        // without the matching -fPIE at compile time. -fPIE keeps the two
+        // consistent and is harmless when PIE is not requested at link time.
+        // See: https://github.com/aws/aws-lc-rs/issues/1168
+        if target_os() != "windows" {
+            memcmp_compile_args.push("-fPIE".into());
+        }
 
         // Respect LDFLAGS for custom linker configurations. This check produces
         // an executable, so the linker must be reachable. LDFLAGS may contain
