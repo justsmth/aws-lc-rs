@@ -948,6 +948,45 @@ jobs:
       - name: Run tests
         run: cargo test -p aws-lc-rs --all-targets
 
+  rpmbuild-hardened-environment:
+    if: github.repository_owner == 'aws'
+    # Reproduces the default Fedora/RHEL `rpmbuild` environment: %build exports
+    # CFLAGS/CXXFLAGS/LDFLAGS from the redhat-rpm-config macros evaluated below.
+    # These split PIE hardening across CFLAGS (-fPIE) and LDFLAGS (-pie), which
+    # broke the memcmp probe (it drops CFLAGS but honors LDFLAGS).
+    # See: https://github.com/aws/aws-lc-rs/issues/1168
+    name: rpmbuild hardened environment
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    steps:
+      # annobin-plugin-gcc is only a weak dependency of redhat-rpm-config but
+      # is required by the -specs=...redhat-annobin-cc1 flag in %build_cflags.
+      - name: Install OS dependencies
+        run: dnf install -y gcc gcc-c++ annobin-plugin-gcc redhat-rpm-config git golang perl
+      - uses: actions/checkout@v7
+        with:
+          submodules: 'recursive'
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -fL --retry 5 --retry-delay 5 -sS https://sh.rustup.rs -o /tmp/rustup-init.sh
+          sh /tmp/rustup-init.sh -y --default-toolchain stable --profile minimal
+          rm /tmp/rustup-init.sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Run tests with rpmbuild hardened flags
+        run: |
+          export CFLAGS="$(rpm --eval '%{?build_cflags}')"
+          export CXXFLAGS="$(rpm --eval '%{?build_cxxflags}')"
+          export LDFLAGS="$(rpm --eval '%{?build_ldflags}')"
+          # Fail loudly if the macros ever stop resolving; an empty value
+          # would silently turn this job into a plain build.
+          test -n "$CFLAGS"
+          test -n "$LDFLAGS"
+          echo "CFLAGS=$CFLAGS"
+          echo "CXXFLAGS=$CXXFLAGS"
+          echo "LDFLAGS=$LDFLAGS"
+          cargo test -p aws-lc-rs --all-targets
+
   symlinked-includes:
     if: github.repository_owner == 'aws'
     name: Symlinked includes
