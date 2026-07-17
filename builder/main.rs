@@ -1371,6 +1371,12 @@ fn main() {
 /// (`CMake` and CC). This sets up include paths, exports library and
 /// configuration names for downstream crates, and registers rerun triggers.
 pub(crate) fn emit_source_build_metadata(manifest_dir: &Path) {
+    // Only aws-lc-fips-sys consumes the generated FIPS-version constant; a
+    // FIPS-flavored aws-lc-sys build reports a module version of 0.
+    if is_fips_crate() {
+        system_library::emit_fips_version(&get_aws_lc_include_path(manifest_dir)).unwrap();
+    }
+
     // MinGW/GCC ignores `#pragma comment(lib, "bcrypt.lib")`, so we must
     // link explicitly. The upstream CMakeLists.txt forces _WIN32_WINNT_WIN7
     // for MINGW+GCC, activating the BCryptGenRandom codepath.

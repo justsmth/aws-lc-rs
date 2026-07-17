@@ -293,8 +293,8 @@ pub(crate) use debug::derive_debug_via_id;
 use std::ffi::CStr;
 
 use crate::aws_lc::{
-    CRYPTO_library_init, ERR_error_string, ERR_get_error, FIPS_mode, ERR_GET_FUNC, ERR_GET_LIB,
-    ERR_GET_REASON,
+    CRYPTO_library_init, ERR_error_string, ERR_get_error, FIPS_mode, OpenSSL_version, ERR_GET_FUNC,
+    ERR_GET_LIB, ERR_GET_REASON, OPENSSL_VERSION,
 };
 use std::sync::Once;
 
@@ -327,6 +327,40 @@ pub fn try_fips_mode() -> Result<(), &'static str> {
         1 => Ok(()),
         _ => Err("FIPS mode not enabled!"),
     }
+}
+
+/// The version number of the linked AWS-LC library (e.g. `"5.1.0"`).
+///
+/// This identifies the exact release you are running against. For FIPS builds it
+/// can disambiguate builds that share a FIPS module number, but it must not be
+/// used to infer FIPS certification status directly.
+///
+/// # Panics
+/// Panics if AWS-LC returns a version string that is not valid UTF-8.
+#[must_use]
+pub fn awslc_version() -> &'static str {
+    init();
+    let full = unsafe { CStr::from_ptr(OpenSSL_version(OPENSSL_VERSION)) }
+        .to_str()
+        .expect("AWS-LC version string is not valid UTF-8");
+    // "AWS-LC 5.1.0" / "AWS-LC FIPS 3.4.0" -> the trailing version token.
+    full.rsplit_once(' ').map_or(full, |(_, version)| version)
+}
+
+/// The FIPS module version this build corresponds to, or `None` if the build
+/// does not correspond to an AWS-LC FIPS release branch.
+///
+/// Unlike [`awslc_version()`], this is a build-time constant resolved from
+/// the AWS-LC headers; the library linked at runtime is not consulted. It is
+/// also not equivalent to [`try_fips_mode()`] and does not by itself imply
+/// FIPS certification status. Returns `None` when the system-library version
+/// check is skipped.
+// TODO: Resolve at runtime via the `FIPS_version()` C API once
+// aws-lc-fips-sys tracks a FIPS 5+ branch.
+#[must_use]
+pub fn fips_version() -> Option<u32> {
+    let version = aws_lc::fips_version();
+    (version != 0).then_some(version)
 }
 
 #[cfg(feature = "fips")]
@@ -420,5 +454,29 @@ mod tests {
         if aws_lc::CFG_CPU_JITTER_ENTROPY() {
             crate::fips_cpu_jitter_entropy();
         }
+    }
+
+    #[test]
+    fn test_awslc_version() {
+        let version = crate::awslc_version();
+        let major = version
+            .split('.')
+            .next()
+            .and_then(|major| major.parse::<u32>().ok())
+            .expect("AWS-LC version should start with a numeric major version");
+        assert!(major > 0);
+    }
+
+    #[cfg(not(feature = "fips"))]
+    #[test]
+    fn test_fips_version() {
+        assert_eq!(crate::fips_version(), None);
+    }
+
+    #[cfg(feature = "fips")]
+    #[test]
+    fn test_fips_version() {
+        // Module versions are monotonic across FIPS branches; the pinned branch is 3.
+        assert!(crate::fips_version().unwrap() >= 3);
     }
 }
