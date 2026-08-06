@@ -2,15 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
 use crate::aws_lc::EVP_PKEY;
-#[cfg(feature = "unstable")]
-use crate::aws_lc::{EVP_PKEY_CTX_set_signature_context, EVP_PKEY_CTX};
 use crate::buffer::Buffer;
 use crate::digest::Digest;
 use crate::encoding::{AsDer, PublicKeyX509Der};
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+use crate::error::KeyRejected;
 use crate::error::Unspecified;
 use crate::evp_pkey::No_EVP_PKEY_CTX_consumer;
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+use crate::pqdsa::signature_context_consumer;
 use crate::pqdsa::{parse_pqdsa_public_key, AlgorithmID};
 use crate::ptr::LcPtr;
+#[cfg(all(not(feature = "fips"), feature = "unstable"))]
+use crate::signature::MAX_SIGNATURE_CONTEXT_LEN;
 use crate::signature::{ParsedPublicKey, ParsedVerificationAlgorithm, VerificationAlgorithm};
 use crate::{digest, sealed};
 use core::fmt;
@@ -154,41 +158,138 @@ impl VerificationAlgorithm for PqdsaVerificationAlgorithm {
     }
 }
 
-impl PqdsaVerificationAlgorithm {
-    /// Verifies the signature for `msg` using a FIPS 204 context string.
-    ///
-    /// The `context` parameter is an octet string of at most 255 bytes that provides
-    /// domain separation per FIPS 204 §5.2. An empty context is equivalent to calling
-    /// [`VerificationAlgorithm::verify_sig`].
-    ///
-    /// This method is gated behind the `unstable` feature: context strings are not
-    /// supported by the FIPS 204 module, so verifying against a non-empty context
-    /// fails under the `fips` feature.
+/// A parsed post-quantum public key, for verification operations that are specific to the
+/// post-quantum signature family.
+///
+/// [`ParsedPublicKey`] is algorithm-erased, so it only exposes operations every signature
+/// algorithm supports. Construct a `PqdsaVerifier` from one to reach the operations that only
+/// post-quantum algorithms have -- currently verification with a domain-separation context
+/// string. Because [`Self::new`] fails for a non-post-quantum key, the algorithm check happens
+/// once here rather than on every operation, and no method on this type can be called for an
+/// algorithm that does not support it.
+///
+/// This holds its own counted reference to the parsed key, so it stays usable after the
+/// originating [`ParsedPublicKey`] is dropped, and it does not re-parse the key on each
+/// verification.
+///
+/// A context string is shared by the post-quantum signature family, which is why it lives
+/// here. Variants specific to one algorithm -- such as ML-DSA's "external mu", whose message
+/// representative must be a function of public inputs alone -- belong on ML-DSA-specific types
+/// instead.
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+pub struct PqdsaVerifier {
+    evp_pkey: LcPtr<EVP_PKEY>,
+    algorithm: &'static PqdsaVerificationAlgorithm,
+}
+
+// Holds a counted reference to the same `EVP_PKEY` as the originating `ParsedPublicKey`, and
+// only ever uses it through non-mutating operations, which AWS-LC documents as safe to call
+// concurrently from multiple threads. See the note on `ParsedPublicKey` in `crate::signature`.
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+unsafe impl Send for PqdsaVerifier {}
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+unsafe impl Sync for PqdsaVerifier {}
+
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+impl PqdsaVerifier {
+    /// Builds a verifier for `public_key`.
     ///
     /// # Errors
-    /// `error::Unspecified` if the signature is invalid or `context` exceeds 255 bytes.
-    #[cfg(feature = "unstable")]
-    pub fn verify_sig_with_context(
+    /// Returns `KeyRejected` if `public_key` is not a post-quantum signature public key.
+    pub fn new(public_key: &ParsedPublicKey) -> Result<Self, KeyRejected> {
+        let algorithm = public_key
+            .pqdsa_verification_algorithm()
+            .ok_or_else(KeyRejected::wrong_algorithm)?;
+        Ok(Self {
+            evp_pkey: public_key.key().clone(),
+            algorithm,
+        })
+    }
+
+    /// Verifies that `signature` is a valid signature of `msg`, with an empty context string.
+    ///
+    /// Equivalent to [`ParsedPublicKey::verify_sig`].
+    ///
+    /// # Errors
+    /// `error::Unspecified` if the signature is invalid.
+    //
+    // # FIPS
+    // Approved for all supported algorithms: ML-DSA-44, ML-DSA-65, ML-DSA-87.
+    pub fn verify(&self, msg: &[u8], signature: &[u8]) -> Result<(), Unspecified> {
+        self.verify_context(msg, b"", signature)
+    }
+
+    /// Verifies that `signature` is a valid signature of `msg` produced with the
+    /// domain-separation context string `context`.
+    ///
+    /// `context` is an octet string of at most [`MAX_SIGNATURE_CONTEXT_LEN`] bytes. For ML-DSA
+    /// it is the `ctx` input to `ML-DSA.Verify` (FIPS 204 section 5.3). An empty context is
+    /// equivalent to calling [`Self::verify`].
+    ///
+    /// Context strings are not supported by the FIPS 204 module that `aws-lc-fips-sys`
+    /// currently binds, so under the `fips` feature a non-empty context always fails.
+    ///
+    /// # Errors
+    /// `error::Unspecified` if `context` is longer than [`MAX_SIGNATURE_CONTEXT_LEN`], or if
+    /// the signature is invalid.
+    //
+    // # FIPS
+    // Not approved with a non-empty context string.
+    pub fn verify_with_context(
         &self,
-        public_key: &[u8],
         msg: &[u8],
         context: &[u8],
         signature: &[u8],
     ) -> Result<(), Unspecified> {
-        let evp_pkey = parse_pqdsa_public_key(public_key, self.id)?;
-        let ctx_fn = |pctx: *mut EVP_PKEY_CTX| -> Result<(), ()> {
-            if context.is_empty() {
-                return Ok(());
-            }
-            if 1 == unsafe {
-                EVP_PKEY_CTX_set_signature_context(pctx, context.as_ptr(), context.len())
-            } {
-                Ok(())
-            } else {
-                Err(())
-            }
-        };
-        evp_pkey.verify(msg, None, Some(ctx_fn), signature)
+        if context.len() > MAX_SIGNATURE_CONTEXT_LEN {
+            return Err(Unspecified);
+        }
+        self.verify_context(msg, context, signature)
+    }
+
+    /// Shared implementation. `context` must already have been bounded to
+    /// `MAX_SIGNATURE_CONTEXT_LEN`; an empty `context` leaves the operation equivalent to one
+    /// with no context configured.
+    fn verify_context(
+        &self,
+        msg: &[u8],
+        context: &[u8],
+        signature: &[u8],
+    ) -> Result<(), Unspecified> {
+        self.evp_pkey.verify(
+            msg,
+            None,
+            Some(signature_context_consumer(context)),
+            signature,
+        )
+    }
+
+    /// Returns the verification algorithm associated with this verifier.
+    #[must_use]
+    pub fn algorithm(&self) -> &'static PqdsaVerificationAlgorithm {
+        self.algorithm
+    }
+}
+
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+impl TryFrom<&ParsedPublicKey> for PqdsaVerifier {
+    type Error = KeyRejected;
+
+    /// See [`PqdsaVerifier::new`].
+    ///
+    /// # Errors
+    /// Returns `KeyRejected` if `public_key` is not a post-quantum signature public key.
+    fn try_from(public_key: &ParsedPublicKey) -> Result<Self, Self::Error> {
+        Self::new(public_key)
+    }
+}
+
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+impl Debug for PqdsaVerifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PqdsaVerifier")
+            .field("algorithm", &self.algorithm)
+            .finish_non_exhaustive()
     }
 }
 

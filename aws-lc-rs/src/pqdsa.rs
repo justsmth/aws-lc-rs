@@ -4,7 +4,10 @@
 pub(crate) mod key_pair;
 pub(crate) mod signature;
 
-use crate::aws_lc::{EVP_PKEY, EVP_PKEY_PQDSA, NID_MLDSA44, NID_MLDSA65, NID_MLDSA87};
+use crate::aws_lc::{
+    EVP_PKEY_CTX_set_signature_context, EVP_PKEY, EVP_PKEY_CTX, EVP_PKEY_PQDSA, NID_MLDSA44,
+    NID_MLDSA65, NID_MLDSA87,
+};
 use crate::error::{KeyRejected, Unspecified};
 use crate::ptr::LcPtr;
 use core::ffi::c_int;
@@ -90,6 +93,37 @@ pub(crate) fn parse_pqdsa_public_key(
             EVP_PKEY_PQDSA,
         ))
         .and_then(|key| validate_pqdsa_evp_key(&key, id).map(|()| key))
+}
+
+/// Returns an `EVP_PKEY_CTX` consumer that installs `context` as the signature
+/// context string for the operation.
+///
+/// An empty `context` is a no-op, which leaves the operation equivalent to one
+/// with no context configured.
+///
+/// Callers are expected to have already bounded `context` to
+/// [`crate::signature::MAX_SIGNATURE_CONTEXT_LEN`]; AWS-LC also enforces this,
+/// so an over-long context fails here rather than being truncated.
+//
+// AWS-LC has renamed this entry point to
+// |EVP_PKEY_CTX_set1_signature_context_string|, retaining
+// |EVP_PKEY_CTX_set_signature_context| as a compatibility alias. The new name is
+// not yet present in aws-lc-fips-sys, so the legacy name is used here to keep
+// both backends building. Switch once aws-lc-fips-sys exposes the new name.
+pub(crate) fn signature_context_consumer(
+    context: &[u8],
+) -> impl Fn(*mut EVP_PKEY_CTX) -> Result<(), ()> + '_ {
+    move |pctx| {
+        if context.is_empty() {
+            return Ok(());
+        }
+        if 1 == unsafe { EVP_PKEY_CTX_set_signature_context(pctx, context.as_ptr(), context.len()) }
+        {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
 }
 
 #[cfg(test)]

@@ -108,8 +108,11 @@
 //! ## `ML_DSA_*` Details: ML-DSA (FIPS 204) Signatures
 //!
 //! The signature is the raw ML-DSA signature encoding described in [FIPS 204].
-//! Signing and verification use the "pure" ML-DSA mode with an empty context
-//! string. The pre-hash (HashML-DSA) mode is not supported, and neither is the
+//! Signing and verification use the "pure" ML-DSA mode. By default the context
+//! string is empty; a context string of up to [`MAX_SIGNATURE_CONTEXT_LEN`]
+//! bytes may be supplied with `PqdsaKeyPair::sign_with_context` and
+//! `PqdsaVerifier::verify_with_context`, both of which require the `unstable`
+//! feature. The pre-hash (HashML-DSA) mode is not supported, and neither is the
 //! "external mu" variant, in which the message representative `mu` is computed
 //! separately and signed or verified in place of the message.
 //!
@@ -307,6 +310,8 @@ pub use crate::ed25519::{
     ED25519_PUBLIC_KEY_LEN,
 };
 pub use crate::pqdsa::key_pair::{PqdsaKeyPair, PqdsaPrivateKey};
+#[cfg(all(feature = "unstable", not(feature = "fips")))]
+pub use crate::pqdsa::signature::PqdsaVerifier;
 pub use crate::pqdsa::signature::{
     PqdsaSigningAlgorithm, PqdsaVerificationAlgorithm, PublicKey as PqdsaPublicKey,
 };
@@ -361,6 +366,14 @@ pub trait KeyPair: Debug + Send + Sized + Sync {
     /// The public key for the key pair.
     fn public_key(&self) -> &Self::PublicKey;
 }
+
+/// The maximum length, in bytes, of a signature context string.
+///
+/// A context string provides domain separation for a signature. Not every algorithm defines
+/// one; those that do share this bound: ML-DSA (FIPS 204 section 5.2), SLH-DSA (FIPS 205), and
+/// Ed25519ph (RFC 8032). See `PqdsaKeyPair::sign_with_context` and
+/// `PqdsaVerifier::verify_with_context`, both of which require the `unstable` feature.
+pub const MAX_SIGNATURE_CONTEXT_LEN: usize = 255;
 
 // Private trait
 pub(crate) trait ParsedVerificationAlgorithm: Debug + Sync {
@@ -513,6 +526,23 @@ impl ParsedPublicKey {
 
     pub(crate) fn key(&self) -> &LcPtr<EVP_PKEY> {
         &self.key
+    }
+
+    /// Returns the `PqdsaVerificationAlgorithm` this key was parsed under, or `None` if the
+    /// key is not a PQDSA key.
+    #[cfg(all(feature = "unstable", not(feature = "fips")))]
+    pub(crate) fn pqdsa_verification_algorithm(
+        &self,
+    ) -> Option<&'static PqdsaVerificationAlgorithm> {
+        if self.algorithm.type_id() != TypeId::of::<PqdsaVerificationAlgorithm>() {
+            return None;
+        }
+        // Same downcast as `parse_public_key` performs when selecting the parse routine.
+        #[allow(clippy::cast_ptr_alignment)]
+        Some(unsafe {
+            &*(self.algorithm as *const dyn VerificationAlgorithm)
+                .cast::<PqdsaVerificationAlgorithm>()
+        })
     }
 
     /// Constructs a `ParsedPublicKey` directly from an already-built RSA

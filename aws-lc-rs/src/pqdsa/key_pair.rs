@@ -4,17 +4,16 @@
 use crate::aws_lc::{
     EVP_PKEY_CTX_pqdsa_set_params, EVP_PKEY_pqdsa_new_raw_private_key, EVP_PKEY, EVP_PKEY_PQDSA,
 };
-#[cfg(feature = "unstable")]
-use crate::aws_lc::{EVP_PKEY_CTX_set_signature_context, EVP_PKEY_CTX};
 use crate::encoding::{AsDer, AsRawBytes, Pkcs8V1Der, PqdsaPrivateKeyRaw};
 use crate::error::{KeyRejected, Unspecified};
-use crate::evp_pkey::No_EVP_PKEY_CTX_consumer;
 use crate::pkcs8;
 use crate::pkcs8::{Document, Version};
 use crate::pqdsa::signature::{PqdsaSigningAlgorithm, PublicKey};
-use crate::pqdsa::validate_pqdsa_evp_key;
+use crate::pqdsa::{signature_context_consumer, validate_pqdsa_evp_key};
 use crate::ptr::LcPtr;
 use crate::signature::KeyPair;
+#[cfg(all(not(feature = "fips"), feature = "unstable"))]
+use crate::signature::MAX_SIGNATURE_CONTEXT_LEN;
 use core::fmt::{Debug, Formatter};
 use std::ffi::c_int;
 
@@ -223,7 +222,7 @@ impl PqdsaKeyPair {
     ///
     /// # Errors
     /// Returns `Unspecified` if serialization fails.
-    #[cfg(feature = "unstable")]
+    #[cfg(all(feature = "unstable", not(feature = "fips")))]
     #[deprecated(note = "use `PqdsaKeyPair::to_pkcs8v1`")]
     pub fn to_pkcs8(&self) -> Result<Document, Unspecified> {
         self.to_pkcs8v1()
@@ -233,35 +232,57 @@ impl PqdsaKeyPair {
     /// slice provided, which must be at least [`PqdsaSigningAlgorithm::signature_len`] bytes
     /// long. It returns the length of the signature on success.
     ///
+    /// This signs with an empty context string. See `Self::sign_with_context`, available with
+    /// the `unstable` feature, to supply one.
+    ///
     /// # Errors
     /// Returns `Unspecified` if `signature` is too small or if signing fails.
     //
     // # FIPS
     // Approved for all supported algorithms: ML-DSA-44, ML-DSA-65, ML-DSA-87.
     pub fn sign(&self, msg: &[u8], signature: &mut [u8]) -> Result<usize, Unspecified> {
-        let sig_length = self.algorithm.signature_len();
-        if signature.len() < sig_length {
-            return Err(Unspecified);
-        }
-        let sig_bytes = self.evp_pkey.sign(msg, None, No_EVP_PKEY_CTX_consumer)?;
-        signature[0..sig_length].copy_from_slice(&sig_bytes);
-        Ok(sig_length)
+        self.sign_context(msg, b"", signature)
     }
 
-    /// Signs the message with a FIPS 204 context string.
+    /// Uses this key to sign the message provided, with a domain-separation context string.
     ///
-    /// The `context` parameter is an octet string of at most 255 bytes that provides
-    /// domain separation per FIPS 204 §5.2. An empty context is equivalent to calling
-    /// [`Self::sign`].
+    /// `context` is an octet string of at most
+    /// [`MAX_SIGNATURE_CONTEXT_LEN`](crate::signature::MAX_SIGNATURE_CONTEXT_LEN) bytes. For
+    /// ML-DSA it is the `ctx` input to `ML-DSA.Sign` (FIPS 204 section 5.2). An empty context
+    /// is equivalent to calling [`Self::sign`].
     ///
-    /// This method is gated behind the `unstable` feature: context strings are not
-    /// supported by the FIPS 204 module, so signing with a non-empty context fails
-    /// under the `fips` feature.
+    /// Verify the resulting signature with
+    /// [`PqdsaVerifier::verify_with_context`](crate::signature::PqdsaVerifier::verify_with_context);
+    /// it will not verify against the same message with a different context, nor with none.
+    ///
+    /// This is gated behind the `unstable` feature because context strings are not supported
+    /// by the FIPS 204 module that `aws-lc-fips-sys` currently binds, so under the `fips`
+    /// feature a non-empty context always fails.
     ///
     /// # Errors
-    /// Returns `Unspecified` if signing fails or if `context` exceeds 255 bytes.
-    #[cfg(feature = "unstable")]
+    /// Returns `Unspecified` if `context` is longer than
+    /// [`MAX_SIGNATURE_CONTEXT_LEN`](crate::signature::MAX_SIGNATURE_CONTEXT_LEN), if
+    /// `signature` is too small, or if signing fails.
+    //
+    // # FIPS
+    // Not approved with a non-empty context string.
+    #[cfg(all(feature = "unstable", not(feature = "fips")))]
     pub fn sign_with_context(
+        &self,
+        msg: &[u8],
+        context: &[u8],
+        signature: &mut [u8],
+    ) -> Result<usize, Unspecified> {
+        if context.len() > MAX_SIGNATURE_CONTEXT_LEN {
+            return Err(Unspecified);
+        }
+        self.sign_context(msg, context, signature)
+    }
+
+    /// Shared implementation of [`Self::sign`] and [`Self::sign_with_context`]. `context` must
+    /// already have been bounded to `MAX_SIGNATURE_CONTEXT_LEN`; an empty `context` leaves the
+    /// operation equivalent to one with no context configured.
+    fn sign_context(
         &self,
         msg: &[u8],
         context: &[u8],
@@ -271,19 +292,15 @@ impl PqdsaKeyPair {
         if signature.len() < sig_length {
             return Err(Unspecified);
         }
-        let ctx_fn = |pctx: *mut EVP_PKEY_CTX| -> Result<(), ()> {
-            if context.is_empty() {
-                return Ok(());
-            }
-            if 1 == unsafe {
-                EVP_PKEY_CTX_set_signature_context(pctx, context.as_ptr(), context.len())
-            } {
-                Ok(())
-            } else {
-                Err(())
-            }
-        };
-        let sig_bytes = self.evp_pkey.sign(msg, None, Some(ctx_fn))?;
+        let sig_bytes = self
+            .evp_pkey
+            .sign(msg, None, Some(signature_context_consumer(context)))?;
+        // Every currently supported algorithm has a fixed signature length, so a mismatch
+        // means the algorithm's declared `signature_len` is wrong for this key. Reject rather
+        // than let `copy_from_slice` panic.
+        if sig_bytes.len() != sig_length {
+            return Err(Unspecified);
+        }
         signature[0..sig_length].copy_from_slice(&sig_bytes);
         Ok(sig_length)
     }
@@ -617,7 +634,7 @@ mod tests {
 
     // The deprecated `to_pkcs8` alias is retained for consumers of the `unstable`
     // feature; it must produce the same encoding as `to_pkcs8v1`.
-    #[cfg(feature = "unstable")]
+    #[cfg(all(feature = "unstable", not(feature = "fips")))]
     #[allow(deprecated)]
     #[test]
     fn test_to_pkcs8_deprecated_alias() {
